@@ -54,7 +54,7 @@ export default function TableShape({ table }: TableShapeProps) {
           style.border,
           style.shadow,
           isOpen && 'ring-2 ring-primary/30 scale-105',
-          table.shape === 'circle' ? 'rounded-full' : 'rounded-2xl'
+          'rounded-2xl'
         )}
         style={{
           left: table.x,

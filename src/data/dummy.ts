@@ -11,7 +11,7 @@ export interface Reservation {
 export interface TableInfo {
   id: string
   label: string
-  shape: 'circle' | 'rectangle'
+  shape: 'rectangle'
   seats: number
   x: number
   y: number
@@ -78,27 +78,27 @@ export const dummyReservations: Reservation[] = [
 
 // 실제 식당 레이아웃 예시: 입구(하단) → 홀 → 창가(상단)
 export const dummyTables: TableInfo[] = [
-  // 창가 쪽 (상단) - 2인 원형 테이블
+  // 창가 쪽 (상단) - 2인 테이블
   {
     id: 't1',
     label: '창가1',
-    shape: 'circle',
+    shape: 'rectangle',
     seats: 2,
     x: 50,
     y: 40,
-    width: 90,
-    height: 90,
+    width: 120,
+    height: 80,
     status: 'available',
   },
   {
     id: 't2',
     label: '창가2',
-    shape: 'circle',
+    shape: 'rectangle',
     seats: 2,
-    x: 190,
+    x: 210,
     y: 40,
-    width: 90,
-    height: 90,
+    width: 120,
+    height: 80,
     status: 'occupied',
     reservation: '이서연 (2명)',
     reservationId: 'r2',
@@ -106,12 +106,12 @@ export const dummyTables: TableInfo[] = [
   {
     id: 't3',
     label: '창가3',
-    shape: 'circle',
+    shape: 'rectangle',
     seats: 2,
-    x: 330,
+    x: 370,
     y: 40,
-    width: 90,
-    height: 90,
+    width: 120,
+    height: 80,
     status: 'available',
   },
   // 홀 중앙 - 4인 사각 테이블
@@ -157,23 +157,23 @@ export const dummyTables: TableInfo[] = [
   {
     id: 't7',
     label: '바1',
-    shape: 'circle',
+    shape: 'rectangle',
     seats: 2,
     x: 120,
     y: 430,
-    width: 85,
-    height: 85,
+    width: 120,
+    height: 80,
     status: 'available',
   },
   {
     id: 't8',
     label: '바2',
-    shape: 'circle',
+    shape: 'rectangle',
     seats: 2,
-    x: 260,
+    x: 280,
     y: 430,
-    width: 85,
-    height: 85,
+    width: 120,
+    height: 80,
     status: 'available',
   },
 ]

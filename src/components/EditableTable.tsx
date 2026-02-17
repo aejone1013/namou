@@ -11,8 +11,8 @@ interface EditableTableProps {
 const DRAG_THRESHOLD = 4
 
 export default function EditableTable({ table }: EditableTableProps) {
-  const { selectedTableId, selectTable, moveTable, resizeTable } = useReservationStore()
-  const isSelected = selectedTableId === table.id
+  const { selectedTableIds, selectTable, toggleSelectTable, moveTable, resizeTable } = useReservationStore()
+  const isSelected = selectedTableIds.includes(table.id)
   const tableRef = useRef<HTMLDivElement>(null)
   const [isDragging, setIsDragging] = useState(false)
 
@@ -22,6 +22,7 @@ export default function EditableTable({ table }: EditableTableProps) {
       e.preventDefault()
       e.stopPropagation()
 
+      const isCtrl = e.ctrlKey || e.metaKey
       const startX = e.clientX
       const startY = e.clientY
       const startTableX = table.x
@@ -48,18 +49,25 @@ export default function EditableTable({ table }: EditableTableProps) {
         window.removeEventListener('mousemove', handleMouseMove)
         window.removeEventListener('mouseup', handleMouseUp)
 
-        // 드래그 안 했으면 선택 토글
         if (!hasMoved) {
-          selectTable(isSelected ? null : table.id)
+          // Ctrl+클릭: 다중 선택 토글
+          if (isCtrl) {
+            toggleSelectTable(table.id)
+          } else {
+            // 일반 클릭: 단일 선택 토글
+            selectTable(isSelected ? null : table.id)
+          }
         } else {
-          selectTable(table.id)
+          if (!isSelected) {
+            selectTable(table.id)
+          }
         }
       }
 
       window.addEventListener('mousemove', handleMouseMove)
       window.addEventListener('mouseup', handleMouseUp)
     },
-    [table.id, table.x, table.y, moveTable, selectTable, isSelected]
+    [table.id, table.x, table.y, moveTable, selectTable, toggleSelectTable, isSelected]
   )
 
   // 리사이즈 핸들
@@ -104,7 +112,7 @@ export default function EditableTable({ table }: EditableTableProps) {
           ? 'border-primary shadow-lg shadow-primary/20 z-20'
           : 'border-dashed border-charcoal-lighter/40 hover:border-primary/50',
         isDragging ? 'cursor-grabbing opacity-90' : 'cursor-grab',
-        table.shape === 'circle' ? 'rounded-full' : 'rounded-2xl',
+        'rounded-2xl',
         'bg-surface'
       )}
       style={{

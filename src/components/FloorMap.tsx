@@ -6,7 +6,7 @@ import DroppableTable from './DroppableTable'
 import TableEditPanel from './TableEditPanel'
 
 export default function FloorMap() {
-  const { tables, isEditMode, toggleEditMode, selectTable } = useReservationStore()
+  const { tables, isEditMode, toggleEditMode, selectTable, selectedTableIds } = useReservationStore()
 
   const availableCount = tables.filter((t) => t.status === 'available').length
   const occupiedCount = tables.filter((t) => t.status === 'occupied').length

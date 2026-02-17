@@ -1,18 +1,24 @@
-import { Circle, RectangleHorizontal, Trash2, Plus, Users, Tag } from 'lucide-react'
+import { Trash2, Plus, Users, Tag, Merge } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useReservationStore } from '@/store/useReservationStore'
 
 export default function TableEditPanel() {
   const {
     tables,
-    selectedTableId,
+    selectedTableIds,
     selectTable,
     updateTable,
     addTable,
     removeTable,
+    mergeTables,
   } = useReservationStore()
 
-  const selectedTable = tables.find((t) => t.id === selectedTableId)
+  const selectedTable =
+    selectedTableIds.length === 1
+      ? tables.find((t) => t.id === selectedTableIds[0])
+      : null
+
+  const canMerge = selectedTableIds.length >= 2
 
   return (
     <div className="absolute top-4 right-4 w-[220px] bg-surface rounded-2xl border border-border shadow-lg z-30 overflow-hidden">
@@ -21,38 +27,44 @@ export default function TableEditPanel() {
         <p className="text-xs font-semibold text-charcoal">테이블 편집</p>
       </div>
 
-      {/* 테이블 추가 버튼 */}
-      <div className="px-4 py-3 border-b border-border">
-        <p className="text-[11px] text-charcoal-lighter mb-2">테이블 추가</p>
-        <div className="flex gap-2">
-          <button
-            onClick={() => addTable('circle')}
-            className={cn(
-              'flex-1 inline-flex items-center justify-center gap-1.5',
-              'text-xs font-medium py-2 rounded-xl',
-              'bg-cream hover:bg-border text-charcoal-light',
-              'transition-colors border border-border'
-            )}
-          >
-            <Circle size={14} />
-            원형
-          </button>
-          <button
-            onClick={() => addTable('rectangle')}
-            className={cn(
-              'flex-1 inline-flex items-center justify-center gap-1.5',
-              'text-xs font-medium py-2 rounded-xl',
-              'bg-cream hover:bg-border text-charcoal-light',
-              'transition-colors border border-border'
-            )}
-          >
-            <RectangleHorizontal size={14} />
-            사각형
-          </button>
-        </div>
+      {/* 테이블 추가 + 병합 버튼 */}
+      <div className="px-4 py-3 border-b border-border space-y-2">
+        <button
+          onClick={() => addTable()}
+          className={cn(
+            'w-full inline-flex items-center justify-center gap-1.5',
+            'text-xs font-medium py-2 rounded-xl',
+            'bg-cream hover:bg-border text-charcoal-light',
+            'transition-colors border border-border'
+          )}
+        >
+          <Plus size={14} />
+          테이블 추가
+        </button>
+
+        <button
+          onClick={mergeTables}
+          disabled={!canMerge}
+          className={cn(
+            'w-full inline-flex items-center justify-center gap-1.5',
+            'text-xs font-medium py-2 rounded-xl',
+            'transition-colors border',
+            canMerge
+              ? 'bg-primary/10 border-primary/30 text-primary hover:bg-primary/20'
+              : 'bg-cream border-border text-charcoal-lighter/50 cursor-not-allowed'
+          )}
+        >
+          <Merge size={14} />
+          테이블 병합 {canMerge && `(${selectedTableIds.length}개)`}
+        </button>
+        {!canMerge && (
+          <p className="text-[10px] text-charcoal-lighter text-center">
+            Ctrl+클릭으로 2개 이상 선택 후 병합
+          </p>
+        )}
       </div>
 
-      {/* 선택된 테이블 속성 */}
+      {/* 선택된 테이블 속성 (단일 선택 시) */}
       {selectedTable ? (
         <div className="px-4 py-3 space-y-3">
           <p className="text-[11px] text-charcoal-lighter">선택된 테이블</p>
@@ -99,39 +111,6 @@ export default function TableEditPanel() {
             />
           </div>
 
-          {/* 모양 변경 */}
-          <div>
-            <label className="text-[11px] text-charcoal-light mb-1 block">모양</label>
-            <div className="flex gap-2">
-              <button
-                onClick={() => updateTable(selectedTable.id, { shape: 'circle' })}
-                className={cn(
-                  'flex-1 inline-flex items-center justify-center gap-1',
-                  'text-[11px] font-medium py-1.5 rounded-xl border',
-                  'transition-colors',
-                  selectedTable.shape === 'circle'
-                    ? 'bg-primary/10 border-primary/30 text-primary'
-                    : 'bg-cream border-border text-charcoal-lighter hover:bg-border'
-                )}
-              >
-                <Circle size={12} />원
-              </button>
-              <button
-                onClick={() => updateTable(selectedTable.id, { shape: 'rectangle' })}
-                className={cn(
-                  'flex-1 inline-flex items-center justify-center gap-1',
-                  'text-[11px] font-medium py-1.5 rounded-xl border',
-                  'transition-colors',
-                  selectedTable.shape === 'rectangle'
-                    ? 'bg-primary/10 border-primary/30 text-primary'
-                    : 'bg-cream border-border text-charcoal-lighter hover:bg-border'
-                )}
-              >
-                <RectangleHorizontal size={12} />사각
-              </button>
-            </div>
-          </div>
-
           {/* 위치 표시 */}
           <div className="text-[10px] text-charcoal-lighter">
             위치: ({selectedTable.x}, {selectedTable.y}) · 크기: {selectedTable.width}×{selectedTable.height}
@@ -150,6 +129,15 @@ export default function TableEditPanel() {
             <Trash2 size={13} />
             테이블 삭제
           </button>
+        </div>
+      ) : selectedTableIds.length >= 2 ? (
+        <div className="px-4 py-4 text-center space-y-2">
+          <p className="text-xs font-medium text-primary">
+            {selectedTableIds.length}개 테이블 선택됨
+          </p>
+          <p className="text-[11px] text-charcoal-lighter">
+            병합 버튼을 눌러 하나로 합치세요
+          </p>
         </div>
       ) : (
         <div className="px-4 py-6 text-center">
@@ -170,7 +158,7 @@ export default function TableEditPanel() {
               className={cn(
                 'text-[11px] font-medium px-2 py-1 rounded-lg',
                 'transition-colors',
-                selectedTableId === t.id
+                selectedTableIds.includes(t.id)
                   ? 'bg-primary text-white'
                   : 'bg-cream text-charcoal-light hover:bg-border'
               )}

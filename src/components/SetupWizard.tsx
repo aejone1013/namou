@@ -1,4 +1,4 @@
-import { MapPin, Plus, Circle, RectangleHorizontal, ArrowRight, RotateCcw } from 'lucide-react'
+import { MapPin, Plus, ArrowRight } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useReservationStore } from '@/store/useReservationStore'
 import EditableTable from './EditableTable'
@@ -39,7 +39,7 @@ export default function SetupWizard() {
             <StepItem
               number={1}
               title="테이블 추가"
-              description="오른쪽 패널에서 원형 또는 사각형 테이블을 추가하세요"
+              description="오른쪽 패널에서 테이블을 추가하세요"
             />
             <StepItem
               number={2}
@@ -125,7 +125,7 @@ export default function SetupWizard() {
                     오른쪽 패널에서 테이블을 추가하세요
                   </p>
                   <p className="text-xs text-charcoal-lighter mt-1">
-                    원형 또는 사각형 테이블을 선택할 수 있습니다
+                    추가 후 드래그로 위치를 조정하세요
                   </p>
                 </div>
               </div>

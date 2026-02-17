@@ -8,7 +8,7 @@ interface ReservationStore {
   tables: TableInfo[]
   isModalOpen: boolean
   isEditMode: boolean
-  selectedTableId: string | null
+  selectedTableIds: string[]
   isSetupComplete: boolean
 
   // Setup Actions
@@ -27,11 +27,13 @@ interface ReservationStore {
   // Table Edit Actions
   toggleEditMode: () => void
   selectTable: (id: string | null) => void
+  toggleSelectTable: (id: string) => void
   moveTable: (id: string, x: number, y: number) => void
   resizeTable: (id: string, width: number, height: number) => void
-  updateTable: (id: string, updates: Partial<Pick<TableInfo, 'label' | 'seats' | 'shape'>>) => void
-  addTable: (shape: 'circle' | 'rectangle') => void
+  updateTable: (id: string, updates: Partial<Pick<TableInfo, 'label' | 'seats'>>) => void
+  addTable: () => void
   removeTable: (id: string) => void
+  mergeTables: () => void
 
   // Modal Actions
   openModal: () => void
@@ -48,7 +50,7 @@ export const useReservationStore = create<ReservationStore>()(
       tables: [],
       isModalOpen: false,
       isEditMode: false,
-      selectedTableId: null,
+      selectedTableIds: [],
       isSetupComplete: false,
 
       // Setup
@@ -56,8 +58,7 @@ export const useReservationStore = create<ReservationStore>()(
         set((state) => ({
           isSetupComplete: true,
           isEditMode: false,
-          selectedTableId: null,
-          // 모든 테이블을 available 상태로 초기화
+          selectedTableIds: [],
           tables: state.tables.map((t) => ({
             ...t,
             status: 'available' as const,
@@ -72,7 +73,7 @@ export const useReservationStore = create<ReservationStore>()(
           tables: [],
           reservations: [],
           isEditMode: false,
-          selectedTableId: null,
+          selectedTableIds: [],
         }),
 
       addReservation: (data) =>
@@ -153,10 +154,20 @@ export const useReservationStore = create<ReservationStore>()(
       toggleEditMode: () =>
         set((state) => ({
           isEditMode: !state.isEditMode,
-          selectedTableId: null,
+          selectedTableIds: [],
         })),
 
-      selectTable: (id) => set({ selectedTableId: id }),
+      selectTable: (id) => set({ selectedTableIds: id ? [id] : [] }),
+
+      toggleSelectTable: (id) =>
+        set((state) => {
+          const isSelected = state.selectedTableIds.includes(id)
+          return {
+            selectedTableIds: isSelected
+              ? state.selectedTableIds.filter((tid) => tid !== id)
+              : [...state.selectedTableIds, id],
+          }
+        }),
 
       moveTable: (id, x, y) =>
         set((state) => ({
@@ -179,39 +190,76 @@ export const useReservationStore = create<ReservationStore>()(
           ),
         })),
 
-      addTable: (shape) =>
+      addTable: () =>
         set((state) => {
           const id = `t${nextTableId++}`
-          const isCircle = shape === 'circle'
           const newTable: TableInfo = {
             id,
             label: id.toUpperCase(),
-            shape,
-            seats: isCircle ? 2 : 4,
+            shape: 'rectangle',
+            seats: 4,
             x: 300,
             y: 300,
-            width: isCircle ? 100 : 160,
+            width: 160,
             height: 100,
             status: 'available',
           }
           return {
             tables: [...state.tables, newTable],
-            selectedTableId: id,
+            selectedTableIds: [id],
           }
         }),
 
       removeTable: (id) =>
         set((state) => ({
           tables: state.tables.filter((t) => t.id !== id),
-          selectedTableId: state.selectedTableId === id ? null : state.selectedTableId,
+          selectedTableIds: state.selectedTableIds.filter((tid) => tid !== id),
         })),
+
+      mergeTables: () =>
+        set((state) => {
+          if (state.selectedTableIds.length < 2) return state
+
+          const selected = state.tables.filter((t) =>
+            state.selectedTableIds.includes(t.id)
+          )
+          if (selected.length < 2) return state
+
+          // 병합: bounding box 계산
+          const minX = Math.min(...selected.map((t) => t.x))
+          const minY = Math.min(...selected.map((t) => t.y))
+          const maxX = Math.max(...selected.map((t) => t.x + t.width))
+          const maxY = Math.max(...selected.map((t) => t.y + t.height))
+          const totalSeats = selected.reduce((sum, t) => sum + t.seats, 0)
+
+          const mergedId = `t${nextTableId++}`
+          const mergedTable: TableInfo = {
+            id: mergedId,
+            label: selected.map((t) => t.label).join('+'),
+            shape: 'rectangle',
+            seats: totalSeats,
+            x: minX,
+            y: minY,
+            width: maxX - minX,
+            height: maxY - minY,
+            status: 'available',
+          }
+
+          const selectedIds = new Set(state.selectedTableIds)
+          return {
+            tables: [
+              ...state.tables.filter((t) => !selectedIds.has(t.id)),
+              mergedTable,
+            ],
+            selectedTableIds: [mergedId],
+          }
+        }),
 
       openModal: () => set({ isModalOpen: true }),
       closeModal: () => set({ isModalOpen: false }),
     }),
     {
       name: 'cozytable-storage',
-      // 영속화할 필드만 선택 (UI 상태 제외)
       partialize: (state) => ({
         tables: state.tables,
         reservations: state.reservations,
