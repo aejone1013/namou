@@ -12,7 +12,7 @@ export default function DragOverlayContent({ reservation }: DragOverlayContentPr
       <div className="flex items-center gap-3 text-charcoal-light text-xs mt-1">
         <span className="inline-flex items-center gap-1">
           <Clock size={12} />
-          {reservation.time}
+          {reservation.startTime} ~ {reservation.endTime}
         </span>
         <span className="inline-flex items-center gap-1">
           <Users size={12} />

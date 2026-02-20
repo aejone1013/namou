@@ -75,8 +75,32 @@ export default function TablePopover({ table, onClose }: TablePopoverProps) {
               </p>
               <div className="flex items-center gap-1 text-charcoal-lighter">
                 <Clock size={11} />
-                {linkedReservation.time}
+                {linkedReservation.startTime} ~ {linkedReservation.endTime}
               </div>
+            </div>
+            <button
+              onClick={() => {
+                clearTable(table.id)
+                onClose()
+              }}
+              className={cn(
+                'w-full inline-flex items-center justify-center gap-1.5',
+                'text-xs font-medium py-2 rounded-xl',
+                'text-occupied bg-occupied-light hover:bg-occupied/20',
+                'transition-colors'
+              )}
+            >
+              <XCircle size={13} />
+              테이블 비우기
+            </button>
+          </>
+        )}
+
+        {/* 상태: 사용중이지만 예약 연결 없음 */}
+        {table.status === 'occupied' && !linkedReservation && (
+          <>
+            <div className="text-xs text-charcoal-lighter py-1">
+              사용중 (직접 배정)
             </div>
             <button
               onClick={() => {
@@ -144,7 +168,7 @@ export default function TablePopover({ table, onClose }: TablePopoverProps) {
               </p>
               <div className="flex items-center gap-1 text-charcoal-lighter">
                 <Clock size={11} />
-                {linkedReservation.time}
+                {linkedReservation.startTime} ~ {linkedReservation.endTime}
               </div>
             </div>
             <button
