@@ -1,4 +1,4 @@
-import { Trash2, Plus, Users, Tag, Merge } from 'lucide-react'
+import { Trash2, Plus, Users, Tag, Merge, Minus, CheckSquare } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useReservationStore } from '@/store/useReservationStore'
 
@@ -7,6 +7,7 @@ export default function TableEditPanel() {
     tables,
     selectedTableIds,
     selectTable,
+    toggleSelectTable,
     updateTable,
     addTable,
     removeTable,
@@ -57,11 +58,6 @@ export default function TableEditPanel() {
           <Merge size={14} />
           테이블 병합 {canMerge && `(${selectedTableIds.length}개)`}
         </button>
-        {!canMerge && (
-          <p className="text-[10px] text-charcoal-lighter text-center">
-            Ctrl+클릭으로 2개 이상 선택 후 병합
-          </p>
-        )}
       </div>
 
       {/* 선택된 테이블 속성 (단일 선택 시) */}
@@ -88,32 +84,46 @@ export default function TableEditPanel() {
             />
           </div>
 
-          {/* 좌석 수 */}
+          {/* 좌석 수 - +/- 버튼 방식 */}
           <div>
             <label className="flex items-center gap-1 text-[11px] text-charcoal-light mb-1">
               <Users size={11} /> 좌석 수
             </label>
-            <input
-              type="number"
-              min={1}
-              max={20}
-              value={selectedTable.seats}
-              onChange={(e) =>
-                updateTable(selectedTable.id, {
-                  seats: Math.max(1, Number(e.target.value)),
-                })
-              }
-              className={cn(
-                'w-full px-3 py-1.5 text-sm rounded-xl',
-                'bg-cream border border-border text-charcoal',
-                'focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/10'
-              )}
-            />
-          </div>
-
-          {/* 위치 표시 */}
-          <div className="text-[10px] text-charcoal-lighter">
-            위치: ({selectedTable.x}, {selectedTable.y}) · 크기: {selectedTable.width}×{selectedTable.height}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() =>
+                  updateTable(selectedTable.id, {
+                    seats: Math.max(1, selectedTable.seats - 1),
+                  })
+                }
+                className={cn(
+                  'w-9 h-9 flex items-center justify-center rounded-xl',
+                  'bg-cream border border-border',
+                  'text-charcoal hover:bg-border',
+                  'transition-colors active:scale-95'
+                )}
+              >
+                <Minus size={16} />
+              </button>
+              <span className="flex-1 text-center text-base font-bold text-charcoal">
+                {selectedTable.seats}
+              </span>
+              <button
+                onClick={() =>
+                  updateTable(selectedTable.id, {
+                    seats: Math.min(20, selectedTable.seats + 1),
+                  })
+                }
+                className={cn(
+                  'w-9 h-9 flex items-center justify-center rounded-xl',
+                  'bg-cream border border-border',
+                  'text-charcoal hover:bg-border',
+                  'transition-colors active:scale-95'
+                )}
+              >
+                <Plus size={16} />
+              </button>
+            </div>
           </div>
 
           {/* 삭제 */}
@@ -147,26 +157,50 @@ export default function TableEditPanel() {
         </div>
       )}
 
-      {/* 테이블 목록 */}
+      {/* 테이블 목록 - 클릭으로 다중 선택 가능 */}
       <div className="px-4 py-3 border-t border-border">
-        <p className="text-[11px] text-charcoal-lighter mb-2">전체 테이블 ({tables.length})</p>
-        <div className="flex flex-wrap gap-1.5">
-          {tables.map((t) => (
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-[11px] text-charcoal-lighter">전체 테이블 ({tables.length})</p>
+          {selectedTableIds.length > 0 && (
             <button
-              key={t.id}
-              onClick={() => selectTable(t.id)}
-              className={cn(
-                'text-[11px] font-medium px-2 py-1 rounded-lg',
-                'transition-colors',
-                selectedTableIds.includes(t.id)
-                  ? 'bg-primary text-white'
-                  : 'bg-cream text-charcoal-light hover:bg-border'
-              )}
+              onClick={() => selectTable(null)}
+              className="text-[10px] text-charcoal-lighter hover:text-charcoal"
             >
-              {t.label}
+              선택 해제
             </button>
-          ))}
+          )}
         </div>
+        <div className="flex flex-wrap gap-1.5">
+          {tables.map((t) => {
+            const isSelected = selectedTableIds.includes(t.id)
+            return (
+              <button
+                key={t.id}
+                onClick={() => {
+                  // 항상 토글 방식으로 다중 선택
+                  if (selectedTableIds.length >= 1) {
+                    toggleSelectTable(t.id)
+                  } else {
+                    selectTable(t.id)
+                  }
+                }}
+                className={cn(
+                  'text-[11px] font-medium px-2 py-1 rounded-lg',
+                  'transition-colors inline-flex items-center gap-1',
+                  isSelected
+                    ? 'bg-primary text-white'
+                    : 'bg-cream text-charcoal-light hover:bg-border'
+                )}
+              >
+                {isSelected && <CheckSquare size={10} />}
+                {t.label}
+              </button>
+            )
+          })}
+        </div>
+        <p className="text-[10px] text-charcoal-lighter mt-2 text-center">
+          목록에서 여러 개 클릭하여 병합할 수 있습니다
+        </p>
       </div>
     </div>
   )

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Reservation, TableInfo } from '@/data/dummy'
+import { TABLE_WIDTH, getTableHeight } from '@/data/dummy'
 
 interface ReservationStore {
   // State
@@ -10,6 +11,7 @@ interface ReservationStore {
   isEditMode: boolean
   selectedTableIds: string[]
   isSetupComplete: boolean
+  editingReservation: Reservation | null
 
   // Setup Actions
   completeSetup: () => void
@@ -17,6 +19,7 @@ interface ReservationStore {
 
   // Reservation Actions
   addReservation: (data: Omit<Reservation, 'id' | 'status'>) => void
+  updateReservation: (id: string, data: Partial<Omit<Reservation, 'id' | 'status'>>) => void
   updateReservationStatus: (id: string, status: Reservation['status']) => void
   removeReservation: (id: string) => void
 
@@ -36,12 +39,18 @@ interface ReservationStore {
   mergeTables: () => void
 
   // Modal Actions
-  openModal: () => void
+  openModal: (reservation?: Reservation) => void
   closeModal: () => void
 }
 
-let nextReservationId = 100
-let nextTableId = 100
+// ID 생성: 기존 데이터의 최대 ID 기반
+function getNextId(items: { id: string }[], prefix: string): string {
+  const maxNum = items.reduce((max, item) => {
+    const num = parseInt(item.id.replace(prefix, ''), 10)
+    return isNaN(num) ? max : Math.max(max, num)
+  }, 0)
+  return `${prefix}${maxNum + 1}`
+}
 
 export const useReservationStore = create<ReservationStore>()(
   persist(
@@ -52,6 +61,7 @@ export const useReservationStore = create<ReservationStore>()(
       isEditMode: false,
       selectedTableIds: [],
       isSetupComplete: false,
+      editingReservation: null,
 
       // Setup
       completeSetup: () =>
@@ -77,12 +87,37 @@ export const useReservationStore = create<ReservationStore>()(
         }),
 
       addReservation: (data) =>
+        set((state) => {
+          const id = getNextId(state.reservations, 'r')
+          return {
+            reservations: [
+              ...state.reservations,
+              { ...data, id, status: 'waiting' },
+            ],
+            isModalOpen: false,
+            editingReservation: null,
+          }
+        }),
+
+      updateReservation: (id, data) =>
         set((state) => ({
-          reservations: [
-            ...state.reservations,
-            { ...data, id: `r${nextReservationId++}`, status: 'waiting' },
-          ],
+          reservations: state.reservations.map((r) =>
+            r.id === id ? { ...r, ...data } : r
+          ),
+          tables: state.tables.map((t) => {
+            if (t.reservationId === id) {
+              const reservation = state.reservations.find((r) => r.id === id)
+              if (reservation) {
+                return {
+                  ...t,
+                  reservation: `${data.name || reservation.name} (${data.partySize || reservation.partySize}명)`,
+                }
+              }
+            }
+            return t
+          }),
           isModalOpen: false,
+          editingReservation: null,
         })),
 
       updateReservationStatus: (id, status) =>
@@ -185,23 +220,30 @@ export const useReservationStore = create<ReservationStore>()(
 
       updateTable: (id, updates) =>
         set((state) => ({
-          tables: state.tables.map((t) =>
-            t.id === id ? { ...t, ...updates } : t
-          ),
+          tables: state.tables.map((t) => {
+            if (t.id !== id) return t
+            const newTable = { ...t, ...updates }
+            // 좌석 수 변경 시 높이 자동 조정
+            if (updates.seats !== undefined) {
+              newTable.height = getTableHeight(updates.seats)
+            }
+            return newTable
+          }),
         })),
 
       addTable: () =>
         set((state) => {
-          const id = `t${nextTableId++}`
+          const id = getNextId(state.tables, 't')
+          const num = parseInt(id.replace('t', ''), 10)
           const newTable: TableInfo = {
             id,
-            label: id.toUpperCase(),
+            label: `T${num}`,
             shape: 'rectangle',
-            seats: 4,
+            seats: 2,
             x: 300,
             y: 300,
-            width: 160,
-            height: 100,
+            width: TABLE_WIDTH,
+            height: getTableHeight(2),
             status: 'available',
           }
           return {
@@ -225,23 +267,24 @@ export const useReservationStore = create<ReservationStore>()(
           )
           if (selected.length < 2) return state
 
-          // 병합: bounding box 계산
+          // 사용중인 테이블은 병합 불가
+          if (selected.some((t) => t.status !== 'available')) return state
+
           const minX = Math.min(...selected.map((t) => t.x))
           const minY = Math.min(...selected.map((t) => t.y))
-          const maxX = Math.max(...selected.map((t) => t.x + t.width))
-          const maxY = Math.max(...selected.map((t) => t.y + t.height))
           const totalSeats = selected.reduce((sum, t) => sum + t.seats, 0)
 
-          const mergedId = `t${nextTableId++}`
+          const mergedId = getNextId(state.tables, 't')
+          const mergedNum = parseInt(mergedId.replace('t', ''), 10)
           const mergedTable: TableInfo = {
             id: mergedId,
-            label: selected.map((t) => t.label).join('+'),
+            label: `T${mergedNum}`,
             shape: 'rectangle',
             seats: totalSeats,
             x: minX,
             y: minY,
-            width: maxX - minX,
-            height: maxY - minY,
+            width: TABLE_WIDTH,
+            height: getTableHeight(totalSeats),
             status: 'available',
           }
 
@@ -255,11 +298,17 @@ export const useReservationStore = create<ReservationStore>()(
           }
         }),
 
-      openModal: () => set({ isModalOpen: true }),
-      closeModal: () => set({ isModalOpen: false }),
+      openModal: (reservation) => set({
+        isModalOpen: true,
+        editingReservation: reservation || null,
+      }),
+      closeModal: () => set({
+        isModalOpen: false,
+        editingReservation: null,
+      }),
     }),
     {
-      name: 'cozytable-storage',
+      name: 'namou-storage',
       partialize: (state) => ({
         tables: state.tables,
         reservations: state.reservations,

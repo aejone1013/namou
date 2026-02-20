@@ -20,7 +20,20 @@ export default function DroppableTable({ table }: DroppableTableProps) {
   const showDropHighlight = isDragActive && isAvailable
 
   return (
-    <div ref={setNodeRef} className="contents">
+    <>
+      {/* 드롭 영역: 테이블 전체를 감싸는 absolute div */}
+      <div
+        ref={setNodeRef}
+        className="absolute"
+        style={{
+          left: table.x,
+          top: table.y,
+          width: table.width,
+          height: table.height,
+          zIndex: isOver ? 15 : 10,
+        }}
+      />
+
       <TableShape table={table} />
 
       {/* 드롭 가능 오버레이 */}
@@ -33,13 +46,14 @@ export default function DroppableTable({ table }: DroppableTableProps) {
             isOver
               ? 'border-primary bg-primary/15 scale-110'
               : 'border-primary/30 bg-primary/5',
-            table.shape === 'circle' ? 'rounded-full' : 'rounded-2xl'
+            'rounded-2xl'
           )}
           style={{
             left: table.x - 4,
             top: table.y - 4,
             width: table.width + 8,
             height: table.height + 8,
+            zIndex: 14,
           }}
         >
           {isOver && (
@@ -49,6 +63,6 @@ export default function DroppableTable({ table }: DroppableTableProps) {
           )}
         </div>
       )}
-    </div>
+    </>
   )
 }

@@ -19,7 +19,7 @@ export default function SetupWizard() {
         <div className="px-8 pt-10 pb-6">
           <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-3 py-1.5 rounded-full mb-6">
             <MapPin size={14} />
-            <span className="text-xs font-semibold">CozyTable</span>
+            <span className="text-xs font-semibold">namou</span>
           </div>
           <h1 className="text-2xl font-bold text-charcoal leading-snug">
             식당 테이블 배치를
@@ -90,7 +90,6 @@ export default function SetupWizard() {
         <div className="flex items-center justify-between px-6 py-4 bg-surface/60 backdrop-blur-sm border-b border-border">
           <div className="flex items-center gap-2">
             <MapPin size={18} className="text-primary" />
-            <h2 className="text-base font-semibold text-charcoal">플로어 맵</h2>
             <span className="text-[11px] font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-full">
               초기 설정
             </span>
