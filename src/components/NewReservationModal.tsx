@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react'
 import { X, UserPlus, Clock, Users, Phone, MessageSquare, Minus, Plus, Sun, Moon } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useReservationStore } from '@/store/useReservationStore'
-import { getStartTimeOptions, getEndTimeOptions } from '@/data/dummy'
+import { getStartTimeOptions, getFixedEndTime, formatFrenchPhone } from '@/data/dummy'
 
 export default function NewReservationModal() {
   const { isModalOpen, closeModal, addReservation, editingReservation, updateReservation } = useReservationStore()
@@ -18,7 +18,6 @@ export default function NewReservationModal() {
   const isEditing = !!editingReservation
 
   const startTimeOptions = getStartTimeOptions(period)
-  const endTimeOptions = startTime ? getEndTimeOptions(startTime, period) : []
 
   // 편집 모드일 때 기존 값 로드
   useEffect(() => {
@@ -40,10 +39,21 @@ export default function NewReservationModal() {
     setEndTime('')
   }
 
-  // startTime 변경 시 endTime 초기화
+  // startTime 변경 시 endTime 자동 계산 (1시간 30분 고정)
   const handleStartTimeChange = (val: string) => {
     setStartTime(val)
-    setEndTime('')
+    if (val) {
+      setEndTime(getFixedEndTime(val))
+    } else {
+      setEndTime('')
+    }
+  }
+
+  // 전화번호 포맷
+  const handlePhoneChange = (val: string) => {
+    // +나 숫자만 허용
+    const cleaned = val.replace(/[^\d+]/g, '')
+    setPhone(formatFrenchPhone(cleaned))
   }
 
   const resetForm = useCallback(() => {
@@ -238,17 +248,18 @@ export default function NewReservationModal() {
               </div>
             </div>
 
-            {/* 시작 ~ 종료 시간 */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-medium text-charcoal-light mb-1 block">
-                  시작 시간 <span className="text-occupied">*</span>
-                </label>
+            {/* 시작 시간 → 종료 시간 자동 계산 */}
+            <div>
+              <label className="text-xs font-medium text-charcoal-light mb-1 block">
+                시작 시간 <span className="text-occupied">*</span>
+                <span className="text-charcoal-lighter ml-1">(1시간 30분 자동 배정)</span>
+              </label>
+              <div className="flex items-center gap-2">
                 <select
                   value={startTime}
                   onChange={(e) => handleStartTimeChange(e.target.value)}
                   className={cn(
-                    'w-full px-4 py-2.5 rounded-xl appearance-none',
+                    'flex-1 px-4 py-2.5 rounded-xl appearance-none',
                     'bg-cream border border-border',
                     'text-sm text-charcoal',
                     !startTime && 'text-charcoal-lighter',
@@ -256,39 +267,24 @@ export default function NewReservationModal() {
                     'transition-all'
                   )}
                 >
-                  <option value="">선택</option>
+                  <option value="">시작 시간</option>
                   {startTimeOptions.map((val) => (
                     <option key={val} value={val}>{val}</option>
                   ))}
                 </select>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-charcoal-light mb-1 block">
-                  종료 시간 <span className="text-occupied">*</span>
-                </label>
-                <select
-                  value={endTime}
-                  onChange={(e) => setEndTime(e.target.value)}
-                  disabled={!startTime}
-                  className={cn(
-                    'w-full px-4 py-2.5 rounded-xl appearance-none',
-                    'bg-cream border border-border',
-                    'text-sm text-charcoal',
-                    !endTime && 'text-charcoal-lighter',
-                    'focus:outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10',
-                    'transition-all',
-                    !startTime && 'opacity-50 cursor-not-allowed'
-                  )}
-                >
-                  <option value="">선택</option>
-                  {endTimeOptions.map((val) => (
-                    <option key={val} value={val}>{val}</option>
-                  ))}
-                </select>
+                <span className="text-charcoal-lighter text-sm">~</span>
+                <div className={cn(
+                  'flex-1 px-4 py-2.5 rounded-xl',
+                  'bg-cream/50 border border-border',
+                  'text-sm',
+                  endTime ? 'text-charcoal font-medium' : 'text-charcoal-lighter'
+                )}>
+                  {endTime || '종료 시간'}
+                </div>
               </div>
             </div>
 
-            {/* 전화번호 */}
+            {/* 전화번호 - 프랑스 포맷 */}
             <div>
               <label className="flex items-center gap-1.5 text-sm font-medium text-charcoal mb-1.5">
                 <Phone size={14} className="text-charcoal-lighter" />
@@ -297,8 +293,8 @@ export default function NewReservationModal() {
               <input
                 type="tel"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="010-1234-5678"
+                onChange={(e) => handlePhoneChange(e.target.value)}
+                placeholder="06 12 34 56 78"
                 className={cn(
                   'w-full px-4 py-2.5 rounded-xl',
                   'bg-cream border border-border',

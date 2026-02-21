@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Clock, Users, MessageSquare, Phone, Trash2, Armchair, Pencil } from 'lucide-react'
+import { Clock, Users, MessageSquare, Phone, Trash2, Armchair, Pencil, ArrowRightLeft } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import type { Reservation } from '@/data/dummy'
 import { useReservationStore } from '@/store/useReservationStore'
@@ -33,7 +33,13 @@ export default function ReservationCard({ reservation }: ReservationCardProps) {
   const { removeReservation, tables, seatReservation, openModal } = useReservationStore()
   const config = statusConfig[reservation.status]
   const [showTableSelect, setShowTableSelect] = useState(false)
+  const [showMoveSelect, setShowMoveSelect] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+
+  // 착석한 테이블 찾기
+  const seatedTable = reservation.tableId
+    ? tables.find((t) => t.id === reservation.tableId)
+    : tables.find((t) => t.reservationId === reservation.id)
 
   // 빈 테이블 중 인원수에 맞는 테이블 찾기
   const availableTables = tables.filter(
@@ -43,6 +49,7 @@ export default function ReservationCard({ reservation }: ReservationCardProps) {
   const handleSeatAtTable = (tableId: string) => {
     seatReservation(reservation.id, tableId)
     setShowTableSelect(false)
+    setShowMoveSelect(false)
   }
 
   return (
@@ -58,16 +65,24 @@ export default function ReservationCard({ reservation }: ReservationCardProps) {
         <h3 className="font-semibold text-charcoal text-[15px]">
           {reservation.name}
         </h3>
-        <span
-          className={cn(
-            'inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full',
-            config.bg,
-            config.text
+        <div className="flex items-center gap-1.5">
+          {/* 착석 테이블 표시 */}
+          {reservation.status === 'seated' && seatedTable && (
+            <span className="text-[10px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded-md">
+              {seatedTable.label}
+            </span>
           )}
-        >
-          <span className={cn('w-1.5 h-1.5 rounded-full', config.dot)} />
-          {config.label}
-        </span>
+          <span
+            className={cn(
+              'inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full',
+              config.bg,
+              config.text
+            )}
+          >
+            <span className={cn('w-1.5 h-1.5 rounded-full', config.dot)} />
+            {config.label}
+          </span>
+        </div>
       </div>
 
       <div className="flex items-center gap-4 text-charcoal-light text-sm">
@@ -124,6 +139,38 @@ export default function ReservationCard({ reservation }: ReservationCardProps) {
         </div>
       )}
 
+      {/* 테이블 이동 패널 */}
+      {showMoveSelect && (
+        <div className="mt-3 pt-3 border-t border-border">
+          <p className="text-[11px] text-charcoal-lighter mb-2">이동할 테이블:</p>
+          <div className="flex flex-wrap gap-1.5">
+            {availableTables.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => handleSeatAtTable(t.id)}
+                className={cn(
+                  'text-xs font-medium px-3 py-1.5 rounded-lg',
+                  'bg-cream hover:bg-primary/10 text-charcoal',
+                  'border border-border hover:border-primary/30',
+                  'transition-colors'
+                )}
+              >
+                {t.label} ({t.seats}석)
+              </button>
+            ))}
+          </div>
+          {availableTables.length === 0 && (
+            <p className="text-[11px] text-charcoal-lighter">빈 테이블이 없습니다</p>
+          )}
+          <button
+            onClick={() => setShowMoveSelect(false)}
+            className="text-[11px] text-charcoal-lighter mt-2 hover:text-charcoal"
+          >
+            취소
+          </button>
+        </div>
+      )}
+
       {/* 삭제 확인 */}
       {showDeleteConfirm && (
         <div className="mt-3 pt-3 border-t border-border">
@@ -157,7 +204,7 @@ export default function ReservationCard({ reservation }: ReservationCardProps) {
       )}
 
       {/* 액션 버튼 */}
-      {!showTableSelect && !showDeleteConfirm && (
+      {!showTableSelect && !showDeleteConfirm && !showMoveSelect && (
         <div
           className={cn(
             'flex items-center gap-2 mt-3 pt-3 border-t border-border',
@@ -182,6 +229,21 @@ export default function ReservationCard({ reservation }: ReservationCardProps) {
             <span className="flex-1 text-xs text-charcoal-lighter text-center py-1.5">
               빈 테이블 없음
             </span>
+          )}
+          {/* 착석 중일 때 테이블 이동 버튼 */}
+          {reservation.status === 'seated' && (
+            <button
+              onClick={() => setShowMoveSelect(true)}
+              className={cn(
+                'flex-1 inline-flex items-center justify-center gap-1.5',
+                'text-xs font-medium py-1.5 rounded-xl',
+                'text-primary bg-primary/10 hover:bg-primary/20',
+                'transition-colors'
+              )}
+            >
+              <ArrowRightLeft size={13} />
+              테이블 이동
+            </button>
           )}
           {reservation.status !== 'completed' && (
             <button

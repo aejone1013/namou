@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Pencil, Check, Users, Clock } from 'lucide-react'
+import { Pencil, Check, Users, Clock, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useReservationStore } from '@/store/useReservationStore'
 import { SNAP_SIZE } from '@/data/dummy'
@@ -12,7 +12,7 @@ interface FloorMapProps {
 }
 
 export default function FloorMap({ onOpenTimeTable }: FloorMapProps) {
-  const { tables, isEditMode, toggleEditMode, selectTable } = useReservationStore()
+  const { tables, isEditMode, toggleEditMode, selectTable, resetSetup } = useReservationStore()
 
   const totalSeats = tables.reduce((sum, t) => sum + t.seats, 0)
   const occupiedSeats = tables
@@ -64,9 +64,27 @@ export default function FloorMap({ onOpenTimeTable }: FloorMapProps) {
           )}
 
           {isEditMode && (
-            <span className="text-[10px] font-medium text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">
-              편집 모드
-            </span>
+            <>
+              <span className="text-[10px] font-medium text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">
+                편집 모드
+              </span>
+              <button
+                onClick={() => {
+                  if (window.confirm('테이블 배치를 초기화하시겠습니까? 모든 예약과 배치가 삭제됩니다.')) {
+                    resetSetup()
+                  }
+                }}
+                className={cn(
+                  'inline-flex items-center gap-1',
+                  'text-[10px] font-medium px-2 py-0.5 rounded-full',
+                  'text-occupied bg-occupied-light hover:bg-occupied/20',
+                  'transition-colors'
+                )}
+              >
+                <RotateCcw size={10} />
+                초기화
+              </button>
+            </>
           )}
         </div>
 

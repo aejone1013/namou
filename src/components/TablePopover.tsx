@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Users, Clock, XCircle, Armchair, Info, UserPlus, Minus, Plus } from 'lucide-react'
+import { Users, Clock, XCircle, Armchair, Info, UserPlus, Minus, Plus, ArrowRightLeft } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import type { TableInfo } from '@/data/dummy'
 import { useReservationStore } from '@/store/useReservationStore'
@@ -10,11 +10,12 @@ interface TablePopoverProps {
 }
 
 export default function TablePopover({ table, onClose }: TablePopoverProps) {
-  const { clearTable, reservations, seatReservation, walkInTable } = useReservationStore()
+  const { clearTable, reservations, seatReservation, walkInTable, tables, moveToTable } = useReservationStore()
   const ref = useRef<HTMLDivElement>(null)
   const [showWalkIn, setShowWalkIn] = useState(false)
   const [walkInSize, setWalkInSize] = useState(2)
   const [walkInName, setWalkInName] = useState('')
+  const [showMoveSelect, setShowMoveSelect] = useState(false)
 
   // 바깥 클릭 시 닫기
   useEffect(() => {
@@ -37,11 +38,21 @@ export default function TablePopover({ table, onClose }: TablePopoverProps) {
     (r) => r.status === 'waiting' && r.partySize <= table.seats
   )
 
+  // 이동 가능한 빈 테이블
+  const availableForMove = tables.filter(
+    (t) => t.status === 'available' && t.id !== table.id
+  )
+
   const popoverLeft = table.x + table.width + 12
   const popoverTop = table.y
 
   const handleWalkIn = () => {
     walkInTable(table.id, walkInSize, walkInName.trim() || undefined)
+    onClose()
+  }
+
+  const handleMove = (toTableId: string) => {
+    moveToTable(table.id, toTableId)
     onClose()
   }
 
@@ -68,7 +79,7 @@ export default function TablePopover({ table, onClose }: TablePopoverProps) {
       </div>
 
       <div className="p-3 space-y-2">
-        {/* 상태: 사용중 */}
+        {/* 상태: 사용중 (예약 연결) */}
         {table.status === 'occupied' && linkedReservation && (
           <>
             <div className="text-xs space-y-1">
@@ -83,21 +94,69 @@ export default function TablePopover({ table, onClose }: TablePopoverProps) {
                 {linkedReservation.startTime} ~ {linkedReservation.endTime}
               </div>
             </div>
-            <button
-              onClick={() => {
-                clearTable(table.id)
-                onClose()
-              }}
-              className={cn(
-                'w-full inline-flex items-center justify-center gap-1.5',
-                'text-xs font-medium py-2 rounded-xl',
-                'text-occupied bg-occupied-light hover:bg-occupied/20',
-                'transition-colors'
-              )}
-            >
-              <XCircle size={13} />
-              테이블 비우기
-            </button>
+
+            {/* 이동 선택 */}
+            {showMoveSelect ? (
+              <div className="space-y-1.5">
+                <p className="text-[11px] text-charcoal-lighter">이동할 테이블:</p>
+                {availableForMove.length > 0 ? (
+                  <div className="flex flex-wrap gap-1">
+                    {availableForMove.map((t) => (
+                      <button
+                        key={t.id}
+                        onClick={() => handleMove(t.id)}
+                        className={cn(
+                          'text-[11px] font-medium px-2 py-1 rounded-lg',
+                          'bg-cream hover:bg-primary/10 text-charcoal',
+                          'border border-border hover:border-primary/30',
+                          'transition-colors'
+                        )}
+                      >
+                        {t.label} ({t.seats}석)
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-charcoal-lighter">빈 테이블 없음</p>
+                )}
+                <button
+                  onClick={() => setShowMoveSelect(false)}
+                  className="text-[10px] text-charcoal-lighter hover:text-charcoal"
+                >
+                  취소
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <button
+                  onClick={() => setShowMoveSelect(true)}
+                  className={cn(
+                    'w-full inline-flex items-center justify-center gap-1.5',
+                    'text-xs font-medium py-2 rounded-xl',
+                    'text-primary bg-primary/10 hover:bg-primary/20',
+                    'transition-colors'
+                  )}
+                >
+                  <ArrowRightLeft size={13} />
+                  다른 테이블로 이동
+                </button>
+                <button
+                  onClick={() => {
+                    clearTable(table.id)
+                    onClose()
+                  }}
+                  className={cn(
+                    'w-full inline-flex items-center justify-center gap-1.5',
+                    'text-xs font-medium py-2 rounded-xl',
+                    'text-occupied bg-occupied-light hover:bg-occupied/20',
+                    'transition-colors'
+                  )}
+                >
+                  <XCircle size={13} />
+                  테이블 비우기
+                </button>
+              </div>
+            )}
           </>
         )}
 
@@ -107,21 +166,68 @@ export default function TablePopover({ table, onClose }: TablePopoverProps) {
             <div className="text-xs text-charcoal-lighter py-1">
               {table.reservation || '사용중 (직접 배정)'}
             </div>
-            <button
-              onClick={() => {
-                clearTable(table.id)
-                onClose()
-              }}
-              className={cn(
-                'w-full inline-flex items-center justify-center gap-1.5',
-                'text-xs font-medium py-2 rounded-xl',
-                'text-occupied bg-occupied-light hover:bg-occupied/20',
-                'transition-colors'
-              )}
-            >
-              <XCircle size={13} />
-              테이블 비우기
-            </button>
+
+            {showMoveSelect ? (
+              <div className="space-y-1.5">
+                <p className="text-[11px] text-charcoal-lighter">이동할 테이블:</p>
+                {availableForMove.length > 0 ? (
+                  <div className="flex flex-wrap gap-1">
+                    {availableForMove.map((t) => (
+                      <button
+                        key={t.id}
+                        onClick={() => handleMove(t.id)}
+                        className={cn(
+                          'text-[11px] font-medium px-2 py-1 rounded-lg',
+                          'bg-cream hover:bg-primary/10 text-charcoal',
+                          'border border-border hover:border-primary/30',
+                          'transition-colors'
+                        )}
+                      >
+                        {t.label} ({t.seats}석)
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-charcoal-lighter">빈 테이블 없음</p>
+                )}
+                <button
+                  onClick={() => setShowMoveSelect(false)}
+                  className="text-[10px] text-charcoal-lighter hover:text-charcoal"
+                >
+                  취소
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <button
+                  onClick={() => setShowMoveSelect(true)}
+                  className={cn(
+                    'w-full inline-flex items-center justify-center gap-1.5',
+                    'text-xs font-medium py-2 rounded-xl',
+                    'text-primary bg-primary/10 hover:bg-primary/20',
+                    'transition-colors'
+                  )}
+                >
+                  <ArrowRightLeft size={13} />
+                  다른 테이블로 이동
+                </button>
+                <button
+                  onClick={() => {
+                    clearTable(table.id)
+                    onClose()
+                  }}
+                  className={cn(
+                    'w-full inline-flex items-center justify-center gap-1.5',
+                    'text-xs font-medium py-2 rounded-xl',
+                    'text-occupied bg-occupied-light hover:bg-occupied/20',
+                    'transition-colors'
+                  )}
+                >
+                  <XCircle size={13} />
+                  테이블 비우기
+                </button>
+              </div>
+            )}
           </>
         )}
 
@@ -145,7 +251,6 @@ export default function TablePopover({ table, onClose }: TablePopoverProps) {
             ) : (
               <div className="space-y-2 bg-cream rounded-xl p-2.5">
                 <p className="text-[11px] font-medium text-charcoal">새 팀 배정</p>
-                {/* 이름 입력 */}
                 <input
                   type="text"
                   placeholder="이름 (선택)"
@@ -158,7 +263,6 @@ export default function TablePopover({ table, onClose }: TablePopoverProps) {
                     'focus:outline-none focus:border-primary/50'
                   )}
                 />
-                {/* 인원수 */}
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] text-charcoal-light">인원</span>
                   <div className="flex items-center gap-2">
@@ -177,7 +281,6 @@ export default function TablePopover({ table, onClose }: TablePopoverProps) {
                     </button>
                   </div>
                 </div>
-                {/* 버튼 */}
                 <div className="flex gap-1.5">
                   <button
                     onClick={() => setShowWalkIn(false)}
