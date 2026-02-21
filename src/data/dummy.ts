@@ -22,16 +22,24 @@ export interface TableInfo {
   status: 'available' | 'occupied' | 'reserved'
   reservation?: string
   reservationId?: string
+  mergedFrom?: string[]  // 병합 원본 테이블 ID (분할 복원용)
 }
 
-// 테이블 크기 상수
-export const TABLE_WIDTH = 100
-export const TABLE_BASE_HEIGHT = 80
-export const TABLE_HEIGHT_PER_EXTRA = 25
+// 테이블 크기 상수 (축소)
+export const TABLE_WIDTH = 72
+export const TABLE_BASE_HEIGHT = 60
+export const TABLE_HEIGHT_PER_EXTRA = 18
+
+// 스냅 그리드 크기
+export const SNAP_SIZE = 12
 
 export function getTableHeight(seats: number): number {
   if (seats <= 2) return TABLE_BASE_HEIGHT
   return TABLE_BASE_HEIGHT + (seats - 2) * TABLE_HEIGHT_PER_EXTRA
+}
+
+export function snapToGrid(value: number): number {
+  return Math.round(value / SNAP_SIZE) * SNAP_SIZE
 }
 
 // 시간 생성 유틸

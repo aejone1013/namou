@@ -12,8 +12,8 @@ import type { Reservation, TableInfo } from './data/dummy'
 export default function App() {
   const { seatReservation, isSetupComplete } = useReservationStore()
   const [activeReservation, setActiveReservation] = useState<Reservation | null>(null)
+  const [showTimeTable, setShowTimeTable] = useState(false)
 
-  // PointerSensor로 드래그 감도 개선
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -22,7 +22,6 @@ export default function App() {
     })
   )
 
-  // 초기 설정이 안 되어 있으면 Setup Wizard 표시
   if (!isSetupComplete) {
     return <SetupWizard />
   }
@@ -59,10 +58,13 @@ export default function App() {
     >
       <div className="flex h-screen w-screen bg-cream">
         <Sidebar />
-        <FloorMap />
-        <TimeTable />
+        <FloorMap onOpenTimeTable={() => setShowTimeTable(true)} />
         <NewReservationModal />
       </div>
+
+      {showTimeTable && (
+        <TimeTable onClose={() => setShowTimeTable(false)} />
+      )}
 
       <DragOverlay dropAnimation={null}>
         {activeReservation && (
