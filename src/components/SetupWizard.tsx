@@ -1,6 +1,8 @@
+import { useMemo } from 'react'
 import { MapPin, Plus, ArrowRight } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useReservationStore } from '@/store/useReservationStore'
+import { SNAP_SIZE } from '@/data/dummy'
 import EditableTable from './EditableTable'
 import TableEditPanel from './TableEditPanel'
 
@@ -11,12 +13,24 @@ export default function SetupWizard() {
     selectTable(null)
   }
 
+  // 테이블 배치에 맞춰 캔버스 크기 자동 계산
+  const canvasSize = useMemo(() => {
+    if (tables.length === 0) return { width: 500, height: 500 }
+    const maxX = Math.max(...tables.map((t) => t.x + t.width))
+    const maxY = Math.max(...tables.map((t) => t.y + t.height))
+    const padding = 100
+    return {
+      width: Math.max(500, maxX + padding),
+      height: Math.max(500, maxY + padding),
+    }
+  }, [tables])
+
   return (
     <div className="flex h-screen w-screen bg-cream">
       {/* 왼쪽: 안내 패널 */}
-      <div className="w-[360px] flex flex-col bg-surface border-r border-border">
+      <div className="w-[320px] flex flex-col bg-surface border-r border-border">
         {/* 로고 & 타이틀 */}
-        <div className="px-8 pt-10 pb-6">
+        <div className="px-7 pt-10 pb-6">
           <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-3 py-1.5 rounded-full mb-6">
             <MapPin size={14} />
             <span className="text-xs font-semibold">namou</span>
@@ -34,7 +48,7 @@ export default function SetupWizard() {
         </div>
 
         {/* 가이드 스텝 */}
-        <div className="px-8 flex-1">
+        <div className="px-7 flex-1">
           <div className="space-y-4">
             <StepItem
               number={1}
@@ -55,7 +69,7 @@ export default function SetupWizard() {
         </div>
 
         {/* 하단 버튼 */}
-        <div className="px-8 py-6 border-t border-border">
+        <div className="px-7 py-6 border-t border-border">
           <button
             onClick={completeSetup}
             disabled={tables.length === 0}
@@ -87,9 +101,9 @@ export default function SetupWizard() {
       {/* 오른쪽: 캔버스 + 편집 패널 */}
       <div className="flex-1 h-full flex flex-col">
         {/* 상단 바 */}
-        <div className="flex items-center justify-between px-6 py-4 bg-surface/60 backdrop-blur-sm border-b border-border">
+        <div className="flex items-center justify-between px-6 py-3 bg-surface/60 backdrop-blur-sm border-b border-border">
           <div className="flex items-center gap-2">
-            <MapPin size={18} className="text-primary" />
+            <MapPin size={16} className="text-primary" />
             <span className="text-[11px] font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-full">
               초기 설정
             </span>
@@ -97,19 +111,19 @@ export default function SetupWizard() {
         </div>
 
         {/* 캔버스 */}
-        <div className="flex-1 relative overflow-auto p-6">
+        <div className="flex-1 relative overflow-auto p-5">
           <div
             onClick={handleCanvasClick}
-            className="relative bg-surface rounded-3xl border border-primary/20 border-dashed shadow-sm"
-            style={{ width: 700, height: 900 }}
+            className="relative bg-surface rounded-2xl border border-primary/20 border-dashed shadow-sm"
+            style={{ width: canvasSize.width, height: canvasSize.height }}
           >
             {/* Grid dots pattern */}
             <div
-              className="absolute inset-0 rounded-3xl opacity-[0.15]"
+              className="absolute inset-0 rounded-2xl opacity-[0.15]"
               style={{
                 backgroundImage:
-                  'radial-gradient(circle, #c4b8a8 1px, transparent 1px)',
-                backgroundSize: '24px 24px',
+                  'radial-gradient(circle, #b5a899 1px, transparent 1px)',
+                backgroundSize: `${SNAP_SIZE * 2}px ${SNAP_SIZE * 2}px`,
               }}
             />
 
@@ -117,8 +131,8 @@ export default function SetupWizard() {
             {tables.length === 0 && (
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="text-center">
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
-                    <Plus size={28} className="text-primary" />
+                  <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-primary/10 flex items-center justify-center">
+                    <Plus size={24} className="text-primary" />
                   </div>
                   <p className="text-sm font-medium text-charcoal-light">
                     오른쪽 패널에서 테이블을 추가하세요
@@ -155,7 +169,7 @@ function StepItem({
 }) {
   return (
     <div className="flex gap-3">
-      <div className="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
+      <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[11px] font-bold shrink-0 mt-0.5">
         {number}
       </div>
       <div>

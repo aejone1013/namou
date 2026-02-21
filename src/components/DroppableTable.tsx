@@ -14,14 +14,12 @@ export default function DroppableTable({ table }: DroppableTableProps) {
     disabled: table.status !== 'available',
   })
 
-  // 드래그 중일 때만 드롭 하이라이트 표시
   const isDragActive = !!active
   const isAvailable = table.status === 'available'
   const showDropHighlight = isDragActive && isAvailable
 
   return (
     <>
-      {/* 드롭 영역: 테이블 전체를 감싸는 absolute div */}
       <div
         ref={setNodeRef}
         className="absolute"
@@ -36,7 +34,6 @@ export default function DroppableTable({ table }: DroppableTableProps) {
 
       <TableShape table={table} />
 
-      {/* 드롭 가능 오버레이 */}
       {showDropHighlight && (
         <div
           className={cn(
@@ -46,19 +43,19 @@ export default function DroppableTable({ table }: DroppableTableProps) {
             isOver
               ? 'border-primary bg-primary/15 scale-110'
               : 'border-primary/30 bg-primary/5',
-            'rounded-2xl'
+            'rounded-xl'
           )}
           style={{
-            left: table.x - 4,
-            top: table.y - 4,
-            width: table.width + 8,
-            height: table.height + 8,
+            left: table.x - 3,
+            top: table.y - 3,
+            width: table.width + 6,
+            height: table.height + 6,
             zIndex: 14,
           }}
         >
           {isOver && (
-            <span className="text-[11px] font-bold text-primary bg-surface/90 px-2 py-1 rounded-full shadow-sm">
-              여기에 배정
+            <span className="text-[9px] font-bold text-primary bg-surface/90 px-1.5 py-0.5 rounded-full shadow-sm">
+              배정
             </span>
           )}
         </div>
