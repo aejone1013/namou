@@ -10,10 +10,13 @@ interface ReservationStore {
   isEditMode: boolean
   selectedTableIds: string[]
   isSetupComplete: boolean
+  timeFilter: string | null
 
   // Setup Actions
   completeSetup: () => void
   resetSetup: () => void
+  resetReservations: () => void
+  resetTableLayout: () => void
 
   // Reservation Actions
   addReservation: (data: Omit<Reservation, 'id' | 'status'>) => void
@@ -23,6 +26,7 @@ interface ReservationStore {
   // Table Actions
   seatReservation: (reservationId: string, tableId: string) => void
   clearTable: (tableId: string) => void
+  moveReservationToTable: (fromTableId: string, toTableId: string) => void
 
   // Table Edit Actions
   toggleEditMode: () => void
@@ -34,6 +38,11 @@ interface ReservationStore {
   addTable: () => void
   removeTable: (id: string) => void
   mergeTables: () => void
+  alignTables: (direction: 'left' | 'right' | 'top' | 'bottom' | 'horizontal-center' | 'vertical-center') => void
+  distributeTables: (direction: 'horizontal' | 'vertical') => void
+
+  // Time filter
+  setTimeFilter: (time: string | null) => void
 
   // Modal Actions
   openModal: () => void
@@ -52,6 +61,7 @@ export const useReservationStore = create<ReservationStore>()(
       isEditMode: false,
       selectedTableIds: [],
       isSetupComplete: false,
+      timeFilter: null,
 
       // Setup
       completeSetup: () =>
@@ -74,6 +84,29 @@ export const useReservationStore = create<ReservationStore>()(
           reservations: [],
           isEditMode: false,
           selectedTableIds: [],
+          timeFilter: null,
+        }),
+
+      resetReservations: () =>
+        set((state) => ({
+          reservations: [],
+          timeFilter: null,
+          tables: state.tables.map((t) => ({
+            ...t,
+            status: 'available' as const,
+            reservation: undefined,
+            reservationId: undefined,
+          })),
+        })),
+
+      resetTableLayout: () =>
+        set({
+          isSetupComplete: false,
+          tables: [],
+          reservations: [],
+          isEditMode: false,
+          selectedTableIds: [],
+          timeFilter: null,
         }),
 
       addReservation: (data) =>
@@ -147,6 +180,35 @@ export const useReservationStore = create<ReservationStore>()(
                   r.id === reservationId ? { ...r, status: 'completed' } : r
                 )
               : state.reservations,
+          }
+        }),
+
+      moveReservationToTable: (fromTableId, toTableId) =>
+        set((state) => {
+          const fromTable = state.tables.find((t) => t.id === fromTableId)
+          const toTable = state.tables.find((t) => t.id === toTableId)
+          if (!fromTable || !toTable || !fromTable.reservationId) return state
+          if (toTable.status !== 'available') return state
+
+          const reservationId = fromTable.reservationId
+          const reservation = state.reservations.find((r) => r.id === reservationId)
+          if (!reservation) return state
+
+          return {
+            tables: state.tables.map((t) => {
+              if (t.id === fromTableId) {
+                return { ...t, status: 'available' as const, reservation: undefined, reservationId: undefined }
+              }
+              if (t.id === toTableId) {
+                return {
+                  ...t,
+                  status: 'occupied' as const,
+                  reservation: `${reservation.name} (${reservation.partySize}명)`,
+                  reservationId,
+                }
+              }
+              return t
+            }),
           }
         }),
 
@@ -254,6 +316,105 @@ export const useReservationStore = create<ReservationStore>()(
             selectedTableIds: [mergedId],
           }
         }),
+
+      alignTables: (direction) =>
+        set((state) => {
+          if (state.selectedTableIds.length < 2) return state
+          const selected = state.tables.filter((t) => state.selectedTableIds.includes(t.id))
+          if (selected.length < 2) return state
+
+          let updates: Record<string, { x?: number; y?: number }> = {}
+
+          switch (direction) {
+            case 'left': {
+              const minX = Math.min(...selected.map((t) => t.x))
+              selected.forEach((t) => { updates[t.id] = { x: minX } })
+              break
+            }
+            case 'right': {
+              const maxRight = Math.max(...selected.map((t) => t.x + t.width))
+              selected.forEach((t) => { updates[t.id] = { x: maxRight - t.width } })
+              break
+            }
+            case 'top': {
+              const minY = Math.min(...selected.map((t) => t.y))
+              selected.forEach((t) => { updates[t.id] = { y: minY } })
+              break
+            }
+            case 'bottom': {
+              const maxBottom = Math.max(...selected.map((t) => t.y + t.height))
+              selected.forEach((t) => { updates[t.id] = { y: maxBottom - t.height } })
+              break
+            }
+            case 'horizontal-center': {
+              const centerY = selected.reduce((sum, t) => sum + t.y + t.height / 2, 0) / selected.length
+              selected.forEach((t) => { updates[t.id] = { y: Math.round(centerY - t.height / 2) } })
+              break
+            }
+            case 'vertical-center': {
+              const centerX = selected.reduce((sum, t) => sum + t.x + t.width / 2, 0) / selected.length
+              selected.forEach((t) => { updates[t.id] = { x: Math.round(centerX - t.width / 2) } })
+              break
+            }
+          }
+
+          return {
+            tables: state.tables.map((t) =>
+              updates[t.id] ? { ...t, ...updates[t.id] } : t
+            ),
+          }
+        }),
+
+      distributeTables: (direction) =>
+        set((state) => {
+          if (state.selectedTableIds.length < 3) return state
+          const selected = state.tables.filter((t) => state.selectedTableIds.includes(t.id))
+          if (selected.length < 3) return state
+
+          if (direction === 'horizontal') {
+            const sorted = [...selected].sort((a, b) => a.x - b.x)
+            const first = sorted[0]
+            const last = sorted[sorted.length - 1]
+            const totalSpace = (last.x + last.width) - first.x
+            const totalWidth = sorted.reduce((sum, t) => sum + t.width, 0)
+            const gap = (totalSpace - totalWidth) / (sorted.length - 1)
+
+            let currentX = first.x
+            const updates: Record<string, { x: number }> = {}
+            sorted.forEach((t) => {
+              updates[t.id] = { x: Math.round(currentX) }
+              currentX += t.width + gap
+            })
+
+            return {
+              tables: state.tables.map((t) =>
+                updates[t.id] ? { ...t, ...updates[t.id] } : t
+              ),
+            }
+          } else {
+            const sorted = [...selected].sort((a, b) => a.y - b.y)
+            const first = sorted[0]
+            const last = sorted[sorted.length - 1]
+            const totalSpace = (last.y + last.height) - first.y
+            const totalHeight = sorted.reduce((sum, t) => sum + t.height, 0)
+            const gap = (totalSpace - totalHeight) / (sorted.length - 1)
+
+            let currentY = first.y
+            const updates: Record<string, { y: number }> = {}
+            sorted.forEach((t) => {
+              updates[t.id] = { y: Math.round(currentY) }
+              currentY += t.height + gap
+            })
+
+            return {
+              tables: state.tables.map((t) =>
+                updates[t.id] ? { ...t, ...updates[t.id] } : t
+              ),
+            }
+          }
+        }),
+
+      setTimeFilter: (time) => set({ timeFilter: time }),
 
       openModal: () => set({ isModalOpen: true }),
       closeModal: () => set({ isModalOpen: false }),

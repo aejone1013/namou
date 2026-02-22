@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react'
-import { Users, Clock, XCircle, Armchair, Info } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Users, Clock, XCircle, Armchair, Info, ArrowRightLeft } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import type { TableInfo } from '@/data/dummy'
 import { useReservationStore } from '@/store/useReservationStore'
@@ -10,8 +10,9 @@ interface TablePopoverProps {
 }
 
 export default function TablePopover({ table, onClose }: TablePopoverProps) {
-  const { clearTable, reservations, seatReservation } = useReservationStore()
+  const { clearTable, reservations, seatReservation, tables, moveReservationToTable } = useReservationStore()
   const ref = useRef<HTMLDivElement>(null)
+  const [showMoveList, setShowMoveList] = useState(false)
 
   // 바깥 클릭 시 닫기
   useEffect(() => {
@@ -36,6 +37,11 @@ export default function TablePopover({ table, onClose }: TablePopoverProps) {
     (r) => r.status === 'waiting' && r.partySize <= table.seats
   )
 
+  // 이동 가능한 빈 테이블
+  const availableTablesForMove = tables.filter(
+    (t) => t.id !== table.id && t.status === 'available' && linkedReservation && t.seats >= linkedReservation.partySize
+  )
+
   // 팝오버 위치 계산 (테이블 우측에 표시)
   const popoverLeft = table.x + table.width + 12
   const popoverTop = table.y
@@ -44,7 +50,7 @@ export default function TablePopover({ table, onClose }: TablePopoverProps) {
     <div
       ref={ref}
       className={cn(
-        'absolute z-30 w-[200px]',
+        'absolute z-30 w-[220px]',
         'bg-surface rounded-2xl border border-border',
         'shadow-xl shadow-charcoal/10',
         'overflow-hidden'
@@ -78,6 +84,8 @@ export default function TablePopover({ table, onClose }: TablePopoverProps) {
                 {linkedReservation.time}
               </div>
             </div>
+
+            {/* 테이블 비우기 */}
             <button
               onClick={() => {
                 clearTable(table.id)
@@ -93,6 +101,57 @@ export default function TablePopover({ table, onClose }: TablePopoverProps) {
               <XCircle size={13} />
               테이블 비우기
             </button>
+
+            {/* 다른 테이블로 이동 */}
+            {availableTablesForMove.length > 0 && (
+              <>
+                <button
+                  onClick={() => setShowMoveList(!showMoveList)}
+                  className={cn(
+                    'w-full inline-flex items-center justify-center gap-1.5',
+                    'text-xs font-medium py-2 rounded-xl',
+                    'transition-colors',
+                    showMoveList
+                      ? 'text-white bg-primary'
+                      : 'text-primary bg-primary/10 hover:bg-primary/20'
+                  )}
+                >
+                  <ArrowRightLeft size={13} />
+                  다른 테이블로 이동
+                </button>
+
+                {showMoveList && (
+                  <div className="space-y-1 pt-1">
+                    <p className="text-[11px] text-charcoal-lighter">이동할 테이블 선택:</p>
+                    {availableTablesForMove.slice(0, 5).map((t) => (
+                      <button
+                        key={t.id}
+                        onClick={() => {
+                          moveReservationToTable(table.id, t.id)
+                          onClose()
+                        }}
+                        className={cn(
+                          'w-full flex items-center justify-between',
+                          'text-xs px-3 py-2 rounded-xl',
+                          'bg-cream hover:bg-primary/10 text-charcoal',
+                          'transition-colors'
+                        )}
+                      >
+                        <span className="font-medium">{t.label}</span>
+                        <span className="text-charcoal-lighter flex items-center gap-1">
+                          <Users size={11} />{t.seats}인석
+                        </span>
+                      </button>
+                    ))}
+                    {availableTablesForMove.length > 5 && (
+                      <p className="text-[10px] text-charcoal-lighter text-center">
+                        외 {availableTablesForMove.length - 5}개 테이블
+                      </p>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
           </>
         )}
 

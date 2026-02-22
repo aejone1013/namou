@@ -22,7 +22,7 @@ export default function Sidebar() {
               CozyTable
             </h1>
             <p className="text-xs text-charcoal-lighter">
-              오늘의 예약 관리
+              namou
             </p>
           </div>
         </div>
