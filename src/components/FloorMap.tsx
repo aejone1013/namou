@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { MapPin, Check, Clock } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useReservationStore } from '@/store/useReservationStore'
+import { SNAP_SIZE } from '@/data/dummy'
 import EditableTable from './EditableTable'
 import DroppableTable from './DroppableTable'
 import TableEditPanel from './TableEditPanel'
@@ -32,9 +33,22 @@ export default function FloorMap() {
 
   const [showTimeFilter, setShowTimeFilter] = useState(false)
 
-  const availableCount = tables.filter((t) => t.status === 'available').length
-  const occupiedCount = tables.filter((t) => t.status === 'occupied').length
-  const reservedCount = tables.filter((t) => t.status === 'reserved').length
+  const totalSeats = tables.reduce((sum, t) => sum + t.seats, 0)
+  const occupiedSeats = tables
+    .filter((t) => t.status === 'occupied')
+    .reduce((sum, t) => sum + t.seats, 0)
+
+  // 테이블 배치에 맞춰 맵 크기 자동 계산
+  const canvasSize = useMemo(() => {
+    if (tables.length === 0) return { width: 400, height: 400 }
+    const maxX = Math.max(...tables.map((t) => t.x + t.width))
+    const maxY = Math.max(...tables.map((t) => t.y + t.height))
+    const padding = 80
+    return {
+      width: Math.max(400, maxX + padding),
+      height: Math.max(400, maxY + padding),
+    }
+  }, [tables])
 
   // 시간대 필터에 해당하는 예약 수
   const filteredReservationCount = timeFilter
@@ -65,16 +79,15 @@ export default function FloorMap() {
   return (
     <div className="flex-1 h-full flex flex-col bg-cream">
       {/* Top Bar */}
-      <div className="flex items-center justify-between px-6 py-4 bg-surface/60 backdrop-blur-sm border-b border-border">
-        <div className="flex items-center gap-2">
-          <MapPin size={18} className="text-primary" />
-          <h2 className="text-base font-semibold text-charcoal">플로어 맵</h2>
-          {isEditMode && (
-            <span className="text-[11px] font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-full">
-              편집 모드
-            </span>
-          )}
-        </div>
+      <div className="flex items-center justify-between px-5 py-2.5 bg-surface/60 backdrop-blur-sm border-b border-border">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <Users size={14} className="text-primary" />
+            <span className="text-xs font-semibold text-charcoal">{occupiedSeats}</span>
+            <span className="text-xs text-charcoal-lighter">/</span>
+            <span className="text-xs text-charcoal-light">{totalSeats}</span>
+            <span className="text-[10px] text-charcoal-lighter">좌석</span>
+          </div>
 
         <div className="flex items-center gap-3">
           {!isEditMode && (

@@ -1,26 +1,28 @@
 @import "tailwindcss";
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css');
 
 @theme {
-  --color-cream: #FDFBF7;
-  --color-surface: #FFFFFF;
-  --color-primary: #FF8C42;
-  --color-primary-light: #FFB380;
-  --color-primary-dark: #E07830;
-  --color-terracotta: #E8A87C;
-  --color-terracotta-light: #F0C4A8;
-  --color-charcoal: #2D2D2D;
-  --color-charcoal-light: #5A5A5A;
-  --color-charcoal-lighter: #8A8A8A;
-  --color-border: #F0EDE8;
-  --color-border-hover: #E8E2D9;
-  --color-occupied: #FF6B6B;
-  --color-occupied-light: #FFE0E0;
-  --color-available: #6BCB77;
-  --color-available-light: #E0FFE4;
-  --color-reserved: #FFD93D;
-  --color-reserved-light: #FFF4CC;
+  /* 나무 느낌 미니멀 컬러 팔레트 */
+  --color-cream: #F7F3ED;
+  --color-surface: #FEFCF9;
+  --color-primary: #8B6F47;
+  --color-primary-light: #B8976A;
+  --color-primary-dark: #6B5535;
+  --color-terracotta: #C4956A;
+  --color-terracotta-light: #DDB896;
+  --color-charcoal: #3A3128;
+  --color-charcoal-light: #6B5F52;
+  --color-charcoal-lighter: #9C8F80;
+  --color-border: #E8E0D5;
+  --color-border-hover: #D9CFC1;
+  --color-occupied: #C75B3F;
+  --color-occupied-light: #F5DED6;
+  --color-available: #5B8C5A;
+  --color-available-light: #DCE9DB;
+  --color-reserved: #C4A44A;
+  --color-reserved-light: #F0E6C8;
 
-  --font-sans: 'Pretendard', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-sans: 'Pretendard Variable', 'Pretendard', system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
 body {
@@ -42,7 +44,7 @@ body {
 
 /* Custom scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 5px;
 }
 
 ::-webkit-scrollbar-track {

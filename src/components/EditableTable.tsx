@@ -1,7 +1,8 @@
 import { useRef, useCallback, useState } from 'react'
-import { Users, Move, GripVertical } from 'lucide-react'
+import { Users, Move, GripHorizontal } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import type { TableInfo } from '@/data/dummy'
+import { TABLE_WIDTH, TABLE_BASE_HEIGHT } from '@/data/dummy'
 import { useReservationStore } from '@/store/useReservationStore'
 
 interface EditableTableProps {
@@ -50,11 +51,9 @@ export default function EditableTable({ table }: EditableTableProps) {
         window.removeEventListener('mouseup', handleMouseUp)
 
         if (!hasMoved) {
-          // Ctrl+클릭: 다중 선택 토글
           if (isCtrl) {
             toggleSelectTable(table.id)
           } else {
-            // 일반 클릭: 단일 선택 토글
             selectTable(isSelected ? null : table.id)
           }
         } else {
@@ -70,23 +69,19 @@ export default function EditableTable({ table }: EditableTableProps) {
     [table.id, table.x, table.y, moveTable, selectTable, toggleSelectTable, isSelected]
   )
 
-  // 리사이즈 핸들
+  // 세로 리사이즈 핸들
   const handleResizeMouseDown = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault()
       e.stopPropagation()
 
-      const startX = e.clientX
       const startY = e.clientY
-      const startW = table.width
       const startH = table.height
 
       const handleMouseMove = (ev: MouseEvent) => {
-        const dw = ev.clientX - startX
         const dh = ev.clientY - startY
-        const newW = Math.max(60, startW + dw)
-        const newH = Math.max(60, startH + dh)
-        resizeTable(table.id, Math.round(newW), Math.round(newH))
+        const newH = Math.max(TABLE_BASE_HEIGHT, startH + dh)
+        resizeTable(table.id, TABLE_WIDTH, Math.round(newH))
       }
 
       const handleMouseUp = () => {
@@ -97,7 +92,7 @@ export default function EditableTable({ table }: EditableTableProps) {
       window.addEventListener('mousemove', handleMouseMove)
       window.addEventListener('mouseup', handleMouseUp)
     },
-    [table.id, table.width, table.height, resizeTable]
+    [table.id, table.height, resizeTable]
   )
 
   return (
@@ -112,7 +107,7 @@ export default function EditableTable({ table }: EditableTableProps) {
           ? 'border-primary shadow-lg shadow-primary/20 z-20'
           : 'border-dashed border-charcoal-lighter/40 hover:border-primary/50',
         isDragging ? 'cursor-grabbing opacity-90' : 'cursor-grab',
-        'rounded-2xl',
+        'rounded-xl',
         'bg-surface'
       )}
       style={{
@@ -122,33 +117,25 @@ export default function EditableTable({ table }: EditableTableProps) {
         height: table.height,
       }}
     >
-      {/* 이동 아이콘 */}
-      <Move size={14} className="text-charcoal-lighter mb-0.5" />
-      <span className="text-sm font-bold text-charcoal">{table.label}</span>
-      <div className="flex items-center gap-1 mt-0.5">
-        <Users size={11} className="text-charcoal-lighter" />
-        <span className="text-[11px] text-charcoal-light">{table.seats}</span>
+      <Move size={10} className="text-charcoal-lighter mb-0.5" />
+      <span className="text-[11px] font-bold text-charcoal leading-none">{table.label}</span>
+      <div className="flex items-center gap-0.5 mt-0.5">
+        <Users size={9} className="text-charcoal-lighter" />
+        <span className="text-[9px] text-charcoal-light">{table.seats}</span>
       </div>
 
-      {/* 선택 시 리사이즈 핸들 */}
+      {/* 선택 시 세로 리사이즈 핸들 */}
       {isSelected && (
         <div
           onMouseDown={handleResizeMouseDown}
           className={cn(
-            'absolute -bottom-2 -right-2 w-5 h-5',
-            'bg-primary rounded-lg cursor-se-resize',
+            'absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-6 h-3',
+            'bg-primary rounded-md cursor-s-resize',
             'flex items-center justify-center',
             'shadow-md hover:scale-110 transition-transform'
           )}
         >
-          <GripVertical size={10} className="text-white rotate-[-45deg]" />
-        </div>
-      )}
-
-      {/* 선택 시 크기 인디케이터 */}
-      {isSelected && (
-        <div className="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] text-primary font-medium bg-primary/10 px-2 py-0.5 rounded-full">
-          {table.width}×{table.height}
+          <GripHorizontal size={8} className="text-white" />
         </div>
       )}
     </div>

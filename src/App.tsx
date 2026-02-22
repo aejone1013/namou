@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { DndContext, DragOverlay, type DragStartEvent, type DragEndEvent } from '@dnd-kit/core'
+import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, type DragStartEvent, type DragEndEvent } from '@dnd-kit/core'
 import Sidebar from './components/Sidebar'
 import FloorMap from './components/FloorMap'
+import TimeTable from './components/TimeTable'
 import NewReservationModal from './components/NewReservationModal'
 import DragOverlayContent from './components/DragOverlayContent'
 import SetupWizard from './components/SetupWizard'
@@ -11,8 +12,16 @@ import type { Reservation, TableInfo } from './data/dummy'
 export default function App() {
   const { seatReservation, isSetupComplete } = useReservationStore()
   const [activeReservation, setActiveReservation] = useState<Reservation | null>(null)
+  const [showTimeTable, setShowTimeTable] = useState(false)
 
-  // 초기 설정이 안 되어 있으면 Setup Wizard 표시
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    })
+  )
+
   if (!isSetupComplete) {
     return <SetupWizard />
   }
@@ -42,15 +51,20 @@ export default function App() {
 
   return (
     <DndContext
+      sensors={sensors}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
       <div className="flex h-screen w-screen bg-cream">
         <Sidebar />
-        <FloorMap />
+        <FloorMap onOpenTimeTable={() => setShowTimeTable(true)} />
         <NewReservationModal />
       </div>
+
+      {showTimeTable && (
+        <TimeTable onClose={() => setShowTimeTable(false)} />
+      )}
 
       <DragOverlay dropAnimation={null}>
         {activeReservation && (

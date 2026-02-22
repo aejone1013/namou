@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Reservation, TableInfo } from '@/data/dummy'
+import { TABLE_WIDTH, getTableHeight, snapToGrid } from '@/data/dummy'
 
 interface ReservationStore {
   // State
@@ -20,6 +21,7 @@ interface ReservationStore {
 
   // Reservation Actions
   addReservation: (data: Omit<Reservation, 'id' | 'status'>) => void
+  updateReservation: (id: string, data: Partial<Omit<Reservation, 'id' | 'status'>>) => void
   updateReservationStatus: (id: string, status: Reservation['status']) => void
   removeReservation: (id: string) => void
 
@@ -45,12 +47,17 @@ interface ReservationStore {
   setTimeFilter: (time: string | null) => void
 
   // Modal Actions
-  openModal: () => void
+  openModal: (reservation?: Reservation) => void
   closeModal: () => void
 }
 
-let nextReservationId = 100
-let nextTableId = 100
+function getNextId(items: { id: string }[], prefix: string): string {
+  const maxNum = items.reduce((max, item) => {
+    const num = parseInt(item.id.replace(prefix, ''), 10)
+    return isNaN(num) ? max : Math.max(max, num)
+  }, 0)
+  return `${prefix}${maxNum + 1}`
+}
 
 export const useReservationStore = create<ReservationStore>()(
   persist(
@@ -63,7 +70,6 @@ export const useReservationStore = create<ReservationStore>()(
       isSetupComplete: false,
       timeFilter: null,
 
-      // Setup
       completeSetup: () =>
         set((state) => ({
           isSetupComplete: true,
@@ -110,12 +116,37 @@ export const useReservationStore = create<ReservationStore>()(
         }),
 
       addReservation: (data) =>
+        set((state) => {
+          const id = getNextId(state.reservations, 'r')
+          return {
+            reservations: [
+              ...state.reservations,
+              { ...data, id, status: 'waiting' },
+            ],
+            isModalOpen: false,
+            editingReservation: null,
+          }
+        }),
+
+      updateReservation: (id, data) =>
         set((state) => ({
-          reservations: [
-            ...state.reservations,
-            { ...data, id: `r${nextReservationId++}`, status: 'waiting' },
-          ],
+          reservations: state.reservations.map((r) =>
+            r.id === id ? { ...r, ...data } : r
+          ),
+          tables: state.tables.map((t) => {
+            if (t.reservationId === id) {
+              const reservation = state.reservations.find((r) => r.id === id)
+              if (reservation) {
+                return {
+                  ...t,
+                  reservation: `${data.name || reservation.name} (${data.partySize || reservation.partySize}명)`,
+                }
+              }
+            }
+            return t
+          }),
           isModalOpen: false,
+          editingReservation: null,
         })),
 
       updateReservationStatus: (id, status) =>
@@ -147,20 +178,29 @@ export const useReservationStore = create<ReservationStore>()(
           const reservation = state.reservations.find((r) => r.id === reservationId)
           if (!reservation) return state
 
+          // 이전 테이블 비우기 (이동 시)
+          const prevTableId = reservation.tableId
+
           return {
             reservations: state.reservations.map((r) =>
-              r.id === reservationId ? { ...r, status: 'seated' } : r
+              r.id === reservationId ? { ...r, status: 'seated', tableId } : r
             ),
-            tables: state.tables.map((t) =>
-              t.id === tableId
-                ? {
-                    ...t,
-                    status: 'occupied' as const,
-                    reservation: `${reservation.name} (${reservation.partySize}명)`,
-                    reservationId,
-                  }
-                : t
-            ),
+            tables: state.tables.map((t) => {
+              // 이전 테이블 비우기
+              if (prevTableId && t.id === prevTableId) {
+                return { ...t, status: 'available' as const, reservation: undefined, reservationId: undefined }
+              }
+              // 새 테이블 배정
+              if (t.id === tableId) {
+                return {
+                  ...t,
+                  status: 'occupied' as const,
+                  reservation: `${reservation.name} (${reservation.partySize}명)`,
+                  reservationId,
+                }
+              }
+              return t
+            }),
           }
         }),
 
@@ -177,7 +217,57 @@ export const useReservationStore = create<ReservationStore>()(
             ),
             reservations: reservationId
               ? state.reservations.map((r) =>
-                  r.id === reservationId ? { ...r, status: 'completed' } : r
+                  r.id === reservationId ? { ...r, status: 'completed', tableId: undefined } : r
+                )
+              : state.reservations,
+          }
+        }),
+
+      walkInTable: (tableId, partySize, name) =>
+        set((state) => {
+          const table = state.tables.find((t) => t.id === tableId)
+          if (!table || table.status !== 'available') return state
+
+          const displayName = name || `워크인`
+          return {
+            tables: state.tables.map((t) =>
+              t.id === tableId
+                ? {
+                    ...t,
+                    status: 'occupied' as const,
+                    reservation: `${displayName} (${partySize}명)`,
+                    reservationId: undefined,
+                  }
+                : t
+            ),
+          }
+        }),
+
+      moveToTable: (fromTableId, toTableId) =>
+        set((state) => {
+          const fromTable = state.tables.find((t) => t.id === fromTableId)
+          const toTable = state.tables.find((t) => t.id === toTableId)
+          if (!fromTable || !toTable) return state
+          if (fromTable.status !== 'occupied' || toTable.status !== 'available') return state
+
+          return {
+            tables: state.tables.map((t) => {
+              if (t.id === fromTableId) {
+                return { ...t, status: 'available' as const, reservation: undefined, reservationId: undefined }
+              }
+              if (t.id === toTableId) {
+                return {
+                  ...t,
+                  status: 'occupied' as const,
+                  reservation: fromTable.reservation,
+                  reservationId: fromTable.reservationId,
+                }
+              }
+              return t
+            }),
+            reservations: fromTable.reservationId
+              ? state.reservations.map((r) =>
+                  r.id === fromTable.reservationId ? { ...r, tableId: toTableId } : r
                 )
               : state.reservations,
           }
@@ -234,7 +324,7 @@ export const useReservationStore = create<ReservationStore>()(
       moveTable: (id, x, y) =>
         set((state) => ({
           tables: state.tables.map((t) =>
-            t.id === id ? { ...t, x, y } : t
+            t.id === id ? { ...t, x: snapToGrid(x), y: snapToGrid(y) } : t
           ),
         })),
 
@@ -247,23 +337,29 @@ export const useReservationStore = create<ReservationStore>()(
 
       updateTable: (id, updates) =>
         set((state) => ({
-          tables: state.tables.map((t) =>
-            t.id === id ? { ...t, ...updates } : t
-          ),
+          tables: state.tables.map((t) => {
+            if (t.id !== id) return t
+            const newTable = { ...t, ...updates }
+            if (updates.seats !== undefined) {
+              newTable.height = getTableHeight(updates.seats)
+            }
+            return newTable
+          }),
         })),
 
       addTable: () =>
         set((state) => {
-          const id = `t${nextTableId++}`
+          const id = getNextId(state.tables, 't')
+          const num = parseInt(id.replace('t', ''), 10)
           const newTable: TableInfo = {
             id,
-            label: id.toUpperCase(),
+            label: `T${num}`,
             shape: 'rectangle',
-            seats: 4,
-            x: 300,
-            y: 300,
-            width: 160,
-            height: 100,
+            seats: 2,
+            x: snapToGrid(120),
+            y: snapToGrid(120),
+            width: TABLE_WIDTH,
+            height: getTableHeight(2),
             status: 'available',
           }
           return {
@@ -286,25 +382,25 @@ export const useReservationStore = create<ReservationStore>()(
             state.selectedTableIds.includes(t.id)
           )
           if (selected.length < 2) return state
+          if (selected.some((t) => t.status !== 'available')) return state
 
-          // 병합: bounding box 계산
           const minX = Math.min(...selected.map((t) => t.x))
           const minY = Math.min(...selected.map((t) => t.y))
-          const maxX = Math.max(...selected.map((t) => t.x + t.width))
-          const maxY = Math.max(...selected.map((t) => t.y + t.height))
           const totalSeats = selected.reduce((sum, t) => sum + t.seats, 0)
 
-          const mergedId = `t${nextTableId++}`
+          const mergedId = getNextId(state.tables, 't')
+          const mergedNum = parseInt(mergedId.replace('t', ''), 10)
           const mergedTable: TableInfo = {
             id: mergedId,
-            label: selected.map((t) => t.label).join('+'),
+            label: `T${mergedNum}`,
             shape: 'rectangle',
             seats: totalSeats,
             x: minX,
             y: minY,
-            width: maxX - minX,
-            height: maxY - minY,
+            width: TABLE_WIDTH,
+            height: getTableHeight(totalSeats),
             status: 'available',
+            mergedFrom: state.selectedTableIds,
           }
 
           const selectedIds = new Set(state.selectedTableIds)
@@ -420,7 +516,7 @@ export const useReservationStore = create<ReservationStore>()(
       closeModal: () => set({ isModalOpen: false }),
     }),
     {
-      name: 'cozytable-storage',
+      name: 'namou-storage',
       partialize: (state) => ({
         tables: state.tables,
         reservations: state.reservations,

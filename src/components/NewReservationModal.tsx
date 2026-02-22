@@ -1,36 +1,96 @@
-import { useState, useCallback } from 'react'
-import { X, UserPlus, Clock, Users, Phone, MessageSquare } from 'lucide-react'
+import { useState, useCallback, useEffect } from 'react'
+import { X, UserPlus, Clock, Users, Phone, MessageSquare, Minus, Plus, Sun, Moon } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useReservationStore } from '@/store/useReservationStore'
+import { getStartTimeOptions, getFixedEndTime, formatFrenchPhone } from '@/data/dummy'
 
 export default function NewReservationModal() {
-  const { isModalOpen, closeModal, addReservation } = useReservationStore()
+  const { isModalOpen, closeModal, addReservation, editingReservation, updateReservation } = useReservationStore()
 
   const [name, setName] = useState('')
-  const [partySize, setPartySize] = useState('')
-  const [time, setTime] = useState('')
+  const [partySize, setPartySize] = useState(2)
+  const [period, setPeriod] = useState<'lunch' | 'dinner'>('lunch')
+  const [startTime, setStartTime] = useState('')
+  const [endTime, setEndTime] = useState('')
   const [phone, setPhone] = useState('')
   const [note, setNote] = useState('')
 
+  const isEditing = !!editingReservation
+
+  const startTimeOptions = getStartTimeOptions(period)
+
+  // 편집 모드일 때 기존 값 로드
+  useEffect(() => {
+    if (editingReservation) {
+      setName(editingReservation.name)
+      setPartySize(editingReservation.partySize)
+      setPeriod(editingReservation.period)
+      setStartTime(editingReservation.startTime)
+      setEndTime(editingReservation.endTime)
+      setPhone(editingReservation.phone)
+      setNote(editingReservation.note || '')
+    }
+  }, [editingReservation])
+
+  // period 변경 시 시간 초기화
+  const handlePeriodChange = (newPeriod: 'lunch' | 'dinner') => {
+    setPeriod(newPeriod)
+    setStartTime('')
+    setEndTime('')
+  }
+
+  // startTime 변경 시 endTime 자동 계산 (1시간 30분 고정)
+  const handleStartTimeChange = (val: string) => {
+    setStartTime(val)
+    if (val) {
+      setEndTime(getFixedEndTime(val))
+    } else {
+      setEndTime('')
+    }
+  }
+
+  // 전화번호 포맷
+  const handlePhoneChange = (val: string) => {
+    // +나 숫자만 허용
+    const cleaned = val.replace(/[^\d+]/g, '')
+    setPhone(formatFrenchPhone(cleaned))
+  }
+
   const resetForm = useCallback(() => {
     setName('')
-    setPartySize('')
-    setTime('')
+    setPartySize(2)
+    setPeriod('lunch')
+    setStartTime('')
+    setEndTime('')
     setPhone('')
     setNote('')
   }, [])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!name.trim() || !partySize || !time) return
+    if (!name.trim() || !partySize || !startTime || !endTime) return
 
-    addReservation({
-      name: name.trim(),
-      partySize: Number(partySize),
-      time,
-      phone: phone.trim(),
-      ...(note.trim() ? { note: note.trim() } : {}),
-    })
+    if (isEditing && editingReservation) {
+      updateReservation(editingReservation.id, {
+        name: name.trim(),
+        partySize,
+        period,
+        startTime,
+        endTime,
+        phone: phone.trim(),
+        ...(note.trim() ? { note: note.trim() } : { note: undefined }),
+      })
+    } else {
+      addReservation({
+        name: name.trim(),
+        partySize,
+        period,
+        startTime,
+        endTime,
+        phone: phone.trim(),
+        ...(note.trim() ? { note: note.trim() } : {}),
+      })
+    }
     resetForm()
   }
 
@@ -64,7 +124,9 @@ export default function NewReservationModal() {
               <UserPlus size={20} className="text-primary" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-charcoal">새 예약 추가</h2>
+              <h2 className="text-base font-bold text-charcoal">
+                {isEditing ? '예약 수정' : '새 예약 추가'}
+              </h2>
               <p className="text-xs text-charcoal-lighter">
                 예약 정보를 입력해주세요
               </p>
@@ -107,59 +169,122 @@ export default function NewReservationModal() {
               />
             </div>
 
-            {/* 인원 & 시간 */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="flex items-center gap-1.5 text-sm font-medium text-charcoal mb-1.5">
-                  <Users size={14} className="text-charcoal-lighter" />
-                  인원 <span className="text-occupied">*</span>
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="20"
-                  value={partySize}
-                  onChange={(e) => setPartySize(e.target.value)}
-                  placeholder="2"
+            {/* 인원 */}
+            <div>
+              <label className="flex items-center gap-1.5 text-sm font-medium text-charcoal mb-1.5">
+                <Users size={14} className="text-charcoal-lighter" />
+                인원 <span className="text-occupied">*</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPartySize(Math.max(1, partySize - 1))}
                   className={cn(
-                    'w-full px-4 py-2.5 rounded-xl',
+                    'w-11 h-11 flex items-center justify-center rounded-xl',
                     'bg-cream border border-border',
-                    'text-sm text-charcoal placeholder:text-charcoal-lighter',
-                    'focus:outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10',
-                    'transition-all'
+                    'text-charcoal hover:bg-border hover:text-charcoal',
+                    'transition-colors',
+                    'active:scale-95'
                   )}
-                />
-              </div>
-              <div>
-                <label className="flex items-center gap-1.5 text-sm font-medium text-charcoal mb-1.5">
-                  <Clock size={14} className="text-charcoal-lighter" />
-                  시간 <span className="text-occupied">*</span>
-                </label>
-                <select
-                  value={time}
-                  onChange={(e) => setTime(e.target.value)}
+                >
+                  <Minus size={18} />
+                </button>
+                <span className="flex-1 text-center text-lg font-bold text-charcoal">
+                  {partySize}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPartySize(Math.min(20, partySize + 1))}
                   className={cn(
-                    'w-full px-4 py-2.5 rounded-xl appearance-none',
+                    'w-11 h-11 flex items-center justify-center rounded-xl',
+                    'bg-cream border border-border',
+                    'text-charcoal hover:bg-border hover:text-charcoal',
+                    'transition-colors',
+                    'active:scale-95'
+                  )}
+                >
+                  <Plus size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* 점심/저녁 선택 */}
+            <div>
+              <label className="flex items-center gap-1.5 text-sm font-medium text-charcoal mb-1.5">
+                <Clock size={14} className="text-charcoal-lighter" />
+                시간대 <span className="text-occupied">*</span>
+              </label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => handlePeriodChange('lunch')}
+                  className={cn(
+                    'flex-1 inline-flex items-center justify-center gap-2',
+                    'py-2.5 rounded-xl text-sm font-medium',
+                    'transition-all border',
+                    period === 'lunch'
+                      ? 'bg-primary/10 border-primary/30 text-primary'
+                      : 'bg-cream border-border text-charcoal-light hover:bg-border'
+                  )}
+                >
+                  <Sun size={16} />
+                  점심 (12:00~14:00)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handlePeriodChange('dinner')}
+                  className={cn(
+                    'flex-1 inline-flex items-center justify-center gap-2',
+                    'py-2.5 rounded-xl text-sm font-medium',
+                    'transition-all border',
+                    period === 'dinner'
+                      ? 'bg-primary/10 border-primary/30 text-primary'
+                      : 'bg-cream border-border text-charcoal-light hover:bg-border'
+                  )}
+                >
+                  <Moon size={16} />
+                  저녁 (19:00~21:30)
+                </button>
+              </div>
+            </div>
+
+            {/* 시작 시간 → 종료 시간 자동 계산 */}
+            <div>
+              <label className="text-xs font-medium text-charcoal-light mb-1 block">
+                시작 시간 <span className="text-occupied">*</span>
+                <span className="text-charcoal-lighter ml-1">(1시간 30분 자동 배정)</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <select
+                  value={startTime}
+                  onChange={(e) => handleStartTimeChange(e.target.value)}
+                  className={cn(
+                    'flex-1 px-4 py-2.5 rounded-xl appearance-none',
                     'bg-cream border border-border',
                     'text-sm text-charcoal',
-                    !time && 'text-charcoal-lighter',
+                    !startTime && 'text-charcoal-lighter',
                     'focus:outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10',
                     'transition-all'
                   )}
                 >
-                  <option value="">선택</option>
-                  {Array.from({ length: 24 }, (_, i) => {
-                    const hour = Math.floor(i / 2) + 11
-                    const min = i % 2 === 0 ? '00' : '30'
-                    if (hour > 22) return null
-                    const val = `${hour}:${min}`
-                    return <option key={val} value={val}>{val}</option>
-                  })}
+                  <option value="">시작 시간</option>
+                  {startTimeOptions.map((val) => (
+                    <option key={val} value={val}>{val}</option>
+                  ))}
                 </select>
+                <span className="text-charcoal-lighter text-sm">~</span>
+                <div className={cn(
+                  'flex-1 px-4 py-2.5 rounded-xl',
+                  'bg-cream/50 border border-border',
+                  'text-sm',
+                  endTime ? 'text-charcoal font-medium' : 'text-charcoal-lighter'
+                )}>
+                  {endTime || '종료 시간'}
+                </div>
               </div>
             </div>
 
-            {/* 전화번호 */}
+            {/* 전화번호 - 프랑스 포맷 */}
             <div>
               <label className="flex items-center gap-1.5 text-sm font-medium text-charcoal mb-1.5">
                 <Phone size={14} className="text-charcoal-lighter" />
@@ -168,7 +293,7 @@ export default function NewReservationModal() {
               <input
                 type="tel"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={(e) => handlePhoneChange(e.target.value)}
                 placeholder="06 12 34 56 78"
                 className={cn(
                   'w-full px-4 py-2.5 rounded-xl',
@@ -217,7 +342,7 @@ export default function NewReservationModal() {
             </button>
             <button
               type="submit"
-              disabled={!name.trim() || !partySize || !time}
+              disabled={!name.trim() || !partySize || !startTime || !endTime}
               className={cn(
                 'flex-1 py-2.5 rounded-xl text-sm font-medium',
                 'text-white bg-primary',
@@ -225,7 +350,7 @@ export default function NewReservationModal() {
                 'disabled:opacity-40 disabled:cursor-not-allowed'
               )}
             >
-              예약 추가
+              {isEditing ? '수정' : '예약 추가'}
             </button>
           </div>
         </form>
