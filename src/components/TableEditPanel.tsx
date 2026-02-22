@@ -1,4 +1,10 @@
-import { Trash2, Plus, Users, Tag, Merge, Minus, CheckSquare, Scissors, AlignCenter } from 'lucide-react'
+import {
+  Trash2, Plus, Users, Tag, Merge,
+  AlignStartVertical, AlignEndVertical,
+  AlignStartHorizontal, AlignEndHorizontal,
+  AlignCenterVertical, AlignCenterHorizontal,
+  GripHorizontal, GripVertical,
+} from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useReservationStore } from '@/store/useReservationStore'
 
@@ -12,8 +18,8 @@ export default function TableEditPanel() {
     addTable,
     removeTable,
     mergeTables,
-    splitTable,
     alignTables,
+    distributeTables,
   } = useReservationStore()
 
   const selectedTable =
@@ -22,10 +28,20 @@ export default function TableEditPanel() {
       : null
 
   const canMerge = selectedTableIds.length >= 2
-  const canSplit = selectedTable?.mergedFrom && selectedTable.mergedFrom.length >= 2
+  const canAlign = selectedTableIds.length >= 2
+  const canDistribute = selectedTableIds.length >= 3
+
+  const alignBtnClass = (disabled: boolean) =>
+    cn(
+      'flex items-center justify-center w-8 h-8 rounded-lg',
+      'transition-colors',
+      disabled
+        ? 'text-charcoal-lighter/40 cursor-not-allowed'
+        : 'text-charcoal-light hover:bg-primary/10 hover:text-primary'
+    )
 
   return (
-    <div className="absolute top-4 right-4 w-[200px] bg-surface rounded-2xl border border-border shadow-lg z-30 overflow-hidden">
+    <div className="w-[220px] shrink-0 bg-surface rounded-2xl border border-border shadow-lg z-30 overflow-hidden self-start">
       {/* 헤더 */}
       <div className="px-3 py-2.5 border-b border-border bg-cream/50">
         <p className="text-[11px] font-semibold text-charcoal">테이블 편집</p>
@@ -75,7 +91,99 @@ export default function TableEditPanel() {
         </button>
       </div>
 
-      {/* 선택된 테이블 속성 */}
+      {/* 정렬 & 배분 (2개 이상 선택 시) */}
+      {canAlign && (
+        <div className="px-4 py-3 border-b border-border space-y-2">
+          <p className="text-[11px] text-charcoal-lighter">정렬</p>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => alignTables('left')}
+              disabled={!canAlign}
+              className={alignBtnClass(!canAlign)}
+              title="왼쪽 정렬"
+            >
+              <AlignStartVertical size={14} />
+            </button>
+            <button
+              onClick={() => alignTables('horizontal-center')}
+              disabled={!canAlign}
+              className={alignBtnClass(!canAlign)}
+              title="수평 중앙 정렬"
+            >
+              <AlignCenterVertical size={14} />
+            </button>
+            <button
+              onClick={() => alignTables('right')}
+              disabled={!canAlign}
+              className={alignBtnClass(!canAlign)}
+              title="오른쪽 정렬"
+            >
+              <AlignEndVertical size={14} />
+            </button>
+            <div className="w-px h-5 bg-border mx-0.5" />
+            <button
+              onClick={() => alignTables('top')}
+              disabled={!canAlign}
+              className={alignBtnClass(!canAlign)}
+              title="위쪽 정렬"
+            >
+              <AlignStartHorizontal size={14} />
+            </button>
+            <button
+              onClick={() => alignTables('vertical-center')}
+              disabled={!canAlign}
+              className={alignBtnClass(!canAlign)}
+              title="수직 중앙 정렬"
+            >
+              <AlignCenterHorizontal size={14} />
+            </button>
+            <button
+              onClick={() => alignTables('bottom')}
+              disabled={!canAlign}
+              className={alignBtnClass(!canAlign)}
+              title="아래쪽 정렬"
+            >
+              <AlignEndHorizontal size={14} />
+            </button>
+          </div>
+
+          {canDistribute && (
+            <>
+              <p className="text-[11px] text-charcoal-lighter mt-2">균등 배분</p>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => distributeTables('horizontal')}
+                  className={cn(
+                    'flex-1 inline-flex items-center justify-center gap-1',
+                    'text-[11px] font-medium py-1.5 rounded-lg',
+                    'text-charcoal-light hover:bg-primary/10 hover:text-primary',
+                    'transition-colors'
+                  )}
+                  title="가로 균등 배분"
+                >
+                  <GripHorizontal size={13} />
+                  가로
+                </button>
+                <button
+                  onClick={() => distributeTables('vertical')}
+                  className={cn(
+                    'flex-1 inline-flex items-center justify-center gap-1',
+                    'text-[11px] font-medium py-1.5 rounded-lg',
+                    'text-charcoal-light hover:bg-primary/10 hover:text-primary',
+                    'transition-colors'
+                  )}
+                  title="세로 균등 배분"
+                >
+                  <GripVertical size={13} />
+                  세로
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* 선택된 테이블 속성 (단일 선택 시) */}
       {selectedTable ? (
         <div className="px-3 py-2.5 space-y-2.5">
           <p className="text-[10px] text-charcoal-lighter">선택된 테이블</p>
@@ -148,9 +256,13 @@ export default function TableEditPanel() {
           </div>
         </div>
       ) : selectedTableIds.length >= 2 ? (
-        <div className="px-3 py-3 text-center space-y-1">
-          <p className="text-[11px] font-medium text-primary">{selectedTableIds.length}개 선택됨</p>
-          <p className="text-[10px] text-charcoal-lighter">병합 버튼을 눌러 합치세요</p>
+        <div className="px-4 py-4 text-center space-y-2">
+          <p className="text-xs font-medium text-primary">
+            {selectedTableIds.length}개 테이블 선택됨
+          </p>
+          <p className="text-[11px] text-charcoal-lighter">
+            위의 정렬/병합 기능을 사용하세요
+          </p>
         </div>
       ) : (
         <div className="px-3 py-4 text-center">

@@ -11,11 +11,13 @@ interface ReservationStore {
   isEditMode: boolean
   selectedTableIds: string[]
   isSetupComplete: boolean
-  editingReservation: Reservation | null
+  timeFilter: string | null
 
   // Setup Actions
   completeSetup: () => void
   resetSetup: () => void
+  resetReservations: () => void
+  resetTableLayout: () => void
 
   // Reservation Actions
   addReservation: (data: Omit<Reservation, 'id' | 'status'>) => void
@@ -26,8 +28,7 @@ interface ReservationStore {
   // Table Actions
   seatReservation: (reservationId: string, tableId: string) => void
   clearTable: (tableId: string) => void
-  walkInTable: (tableId: string, partySize: number, name?: string) => void
-  moveToTable: (fromTableId: string, toTableId: string) => void
+  moveReservationToTable: (fromTableId: string, toTableId: string) => void
 
   // Table Edit Actions
   toggleEditMode: () => void
@@ -39,8 +40,11 @@ interface ReservationStore {
   addTable: () => void
   removeTable: (id: string) => void
   mergeTables: () => void
-  splitTable: (id: string) => void
-  alignTables: () => void
+  alignTables: (direction: 'left' | 'right' | 'top' | 'bottom' | 'horizontal-center' | 'vertical-center') => void
+  distributeTables: (direction: 'horizontal' | 'vertical') => void
+
+  // Time filter
+  setTimeFilter: (time: string | null) => void
 
   // Modal Actions
   openModal: (reservation?: Reservation) => void
@@ -64,7 +68,7 @@ export const useReservationStore = create<ReservationStore>()(
       isEditMode: false,
       selectedTableIds: [],
       isSetupComplete: false,
-      editingReservation: null,
+      timeFilter: null,
 
       completeSetup: () =>
         set((state) => ({
@@ -86,6 +90,29 @@ export const useReservationStore = create<ReservationStore>()(
           reservations: [],
           isEditMode: false,
           selectedTableIds: [],
+          timeFilter: null,
+        }),
+
+      resetReservations: () =>
+        set((state) => ({
+          reservations: [],
+          timeFilter: null,
+          tables: state.tables.map((t) => ({
+            ...t,
+            status: 'available' as const,
+            reservation: undefined,
+            reservationId: undefined,
+          })),
+        })),
+
+      resetTableLayout: () =>
+        set({
+          isSetupComplete: false,
+          tables: [],
+          reservations: [],
+          isEditMode: false,
+          selectedTableIds: [],
+          timeFilter: null,
         }),
 
       addReservation: (data) =>
@@ -246,6 +273,36 @@ export const useReservationStore = create<ReservationStore>()(
           }
         }),
 
+      moveReservationToTable: (fromTableId, toTableId) =>
+        set((state) => {
+          const fromTable = state.tables.find((t) => t.id === fromTableId)
+          const toTable = state.tables.find((t) => t.id === toTableId)
+          if (!fromTable || !toTable || !fromTable.reservationId) return state
+          if (toTable.status !== 'available') return state
+
+          const reservationId = fromTable.reservationId
+          const reservation = state.reservations.find((r) => r.id === reservationId)
+          if (!reservation) return state
+
+          return {
+            tables: state.tables.map((t) => {
+              if (t.id === fromTableId) {
+                return { ...t, status: 'available' as const, reservation: undefined, reservationId: undefined }
+              }
+              if (t.id === toTableId) {
+                return {
+                  ...t,
+                  status: 'occupied' as const,
+                  reservation: `${reservation.name} (${reservation.partySize}명)`,
+                  reservationId,
+                }
+              }
+              return t
+            }),
+          }
+        }),
+
+      // Edit Mode
       toggleEditMode: () =>
         set((state) => ({
           isEditMode: !state.isEditMode,
@@ -356,57 +413,107 @@ export const useReservationStore = create<ReservationStore>()(
           }
         }),
 
-      splitTable: (id) =>
+      alignTables: (direction) =>
         set((state) => {
-          const table = state.tables.find((t) => t.id === id)
-          if (!table || !table.mergedFrom || table.mergedFrom.length < 2) return state
-          if (table.status !== 'available') return state
+          if (state.selectedTableIds.length < 2) return state
+          const selected = state.tables.filter((t) => state.selectedTableIds.includes(t.id))
+          if (selected.length < 2) return state
 
-          const splitCount = table.mergedFrom.length
-          const seatsEach = Math.max(1, Math.floor(table.seats / splitCount))
+          let updates: Record<string, { x?: number; y?: number }> = {}
 
-          const newTables: TableInfo[] = table.mergedFrom.map((_, i) => {
-            const newId = getNextId([...state.tables, ...Array(i).fill({ id: `t${999 + i}` })], 't')
-            const newNum = parseInt(newId.replace('t', ''), 10) + i
-            return {
-              id: `t${newNum}`,
-              label: `T${newNum}`,
-              shape: 'rectangle' as const,
-              seats: seatsEach,
-              x: snapToGrid(table.x + i * (TABLE_WIDTH + 12)),
-              y: table.y,
-              width: TABLE_WIDTH,
-              height: getTableHeight(seatsEach),
-              status: 'available' as const,
+          switch (direction) {
+            case 'left': {
+              const minX = Math.min(...selected.map((t) => t.x))
+              selected.forEach((t) => { updates[t.id] = { x: minX } })
+              break
             }
-          })
+            case 'right': {
+              const maxRight = Math.max(...selected.map((t) => t.x + t.width))
+              selected.forEach((t) => { updates[t.id] = { x: maxRight - t.width } })
+              break
+            }
+            case 'top': {
+              const minY = Math.min(...selected.map((t) => t.y))
+              selected.forEach((t) => { updates[t.id] = { y: minY } })
+              break
+            }
+            case 'bottom': {
+              const maxBottom = Math.max(...selected.map((t) => t.y + t.height))
+              selected.forEach((t) => { updates[t.id] = { y: maxBottom - t.height } })
+              break
+            }
+            case 'horizontal-center': {
+              const centerY = selected.reduce((sum, t) => sum + t.y + t.height / 2, 0) / selected.length
+              selected.forEach((t) => { updates[t.id] = { y: Math.round(centerY - t.height / 2) } })
+              break
+            }
+            case 'vertical-center': {
+              const centerX = selected.reduce((sum, t) => sum + t.x + t.width / 2, 0) / selected.length
+              selected.forEach((t) => { updates[t.id] = { x: Math.round(centerX - t.width / 2) } })
+              break
+            }
+          }
 
           return {
-            tables: [
-              ...state.tables.filter((t) => t.id !== id),
-              ...newTables,
-            ],
-            selectedTableIds: newTables.map((t) => t.id),
+            tables: state.tables.map((t) =>
+              updates[t.id] ? { ...t, ...updates[t.id] } : t
+            ),
           }
         }),
 
-      alignTables: () =>
-        set((state) => ({
-          tables: state.tables.map((t) => ({
-            ...t,
-            x: snapToGrid(t.x),
-            y: snapToGrid(t.y),
-          })),
-        })),
+      distributeTables: (direction) =>
+        set((state) => {
+          if (state.selectedTableIds.length < 3) return state
+          const selected = state.tables.filter((t) => state.selectedTableIds.includes(t.id))
+          if (selected.length < 3) return state
 
-      openModal: (reservation) => set({
-        isModalOpen: true,
-        editingReservation: reservation || null,
-      }),
-      closeModal: () => set({
-        isModalOpen: false,
-        editingReservation: null,
-      }),
+          if (direction === 'horizontal') {
+            const sorted = [...selected].sort((a, b) => a.x - b.x)
+            const first = sorted[0]
+            const last = sorted[sorted.length - 1]
+            const totalSpace = (last.x + last.width) - first.x
+            const totalWidth = sorted.reduce((sum, t) => sum + t.width, 0)
+            const gap = (totalSpace - totalWidth) / (sorted.length - 1)
+
+            let currentX = first.x
+            const updates: Record<string, { x: number }> = {}
+            sorted.forEach((t) => {
+              updates[t.id] = { x: Math.round(currentX) }
+              currentX += t.width + gap
+            })
+
+            return {
+              tables: state.tables.map((t) =>
+                updates[t.id] ? { ...t, ...updates[t.id] } : t
+              ),
+            }
+          } else {
+            const sorted = [...selected].sort((a, b) => a.y - b.y)
+            const first = sorted[0]
+            const last = sorted[sorted.length - 1]
+            const totalSpace = (last.y + last.height) - first.y
+            const totalHeight = sorted.reduce((sum, t) => sum + t.height, 0)
+            const gap = (totalSpace - totalHeight) / (sorted.length - 1)
+
+            let currentY = first.y
+            const updates: Record<string, { y: number }> = {}
+            sorted.forEach((t) => {
+              updates[t.id] = { y: Math.round(currentY) }
+              currentY += t.height + gap
+            })
+
+            return {
+              tables: state.tables.map((t) =>
+                updates[t.id] ? { ...t, ...updates[t.id] } : t
+              ),
+            }
+          }
+        }),
+
+      setTimeFilter: (time) => set({ timeFilter: time }),
+
+      openModal: () => set({ isModalOpen: true }),
+      closeModal: () => set({ isModalOpen: false }),
     }),
     {
       name: 'namou-storage',

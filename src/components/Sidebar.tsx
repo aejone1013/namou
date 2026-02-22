@@ -44,7 +44,21 @@ export default function Sidebar() {
   return (
     <aside className="w-[280px] min-w-[280px] h-full bg-surface border-r border-border flex flex-col">
       {/* Header */}
-      <div className="p-4 pb-3">
+      <div className="p-5 pb-4">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-10 h-10 bg-primary/10 rounded-2xl flex items-center justify-center">
+            <Coffee size={20} className="text-primary" />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold text-charcoal tracking-tight">
+              CozyTable
+            </h1>
+            <p className="text-xs text-charcoal-lighter">
+              namou
+            </p>
+          </div>
+        </div>
+
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 bg-primary/10 rounded-xl flex items-center justify-center">
