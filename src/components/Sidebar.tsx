@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Coffee, Clock, Users, CheckCircle, Sun, Moon } from 'lucide-react'
+import { Plus, Coffee, Clock, Users, CheckCircle } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useReservationStore } from '@/store/useReservationStore'
 import DraggableReservationCard from './DraggableReservationCard'
@@ -14,12 +14,15 @@ const tabConfig: { key: TabType; label: string; icon: typeof Clock }[] = [
 ]
 
 export default function Sidebar() {
-  const { reservations, openModal } = useReservationStore()
+  const { reservations, openModal, activeSession } = useReservationStore()
   const [activeTab, setActiveTab] = useState<TabType>('waiting')
 
-  const waitingCount = reservations.filter((r) => r.status === 'waiting').length
-  const seatedCount = reservations.filter((r) => r.status === 'seated').length
-  const completedCount = reservations.filter((r) => r.status === 'completed').length
+  // Filter by current session
+  const sessionReservations = reservations.filter((r) => r.period === activeSession)
+
+  const waitingCount = sessionReservations.filter((r) => r.status === 'waiting').length
+  const seatedCount = sessionReservations.filter((r) => r.status === 'seated').length
+  const completedCount = sessionReservations.filter((r) => r.status === 'completed').length
 
   const counts: Record<TabType, number> = {
     waiting: waitingCount,
@@ -27,12 +30,9 @@ export default function Sidebar() {
     completed: completedCount,
   }
 
-  const filteredReservations = reservations
+  const filteredReservations = sessionReservations
     .filter((r) => r.status === activeTab)
     .sort((a, b) => a.startTime.localeCompare(b.startTime))
-
-  const lunchReservations = filteredReservations.filter((r) => r.period === 'lunch')
-  const dinnerReservations = filteredReservations.filter((r) => r.period === 'dinner')
 
   const renderReservation = (reservation: typeof reservations[0]) =>
     activeTab === 'waiting' ? (
@@ -42,7 +42,7 @@ export default function Sidebar() {
     )
 
   return (
-    <aside className="w-[280px] min-w-[280px] h-full bg-surface border-r border-border flex flex-col">
+    <aside className="w-[240px] min-w-[240px] h-full bg-surface border-r border-border flex flex-col">
       {/* Header */}
       <div className="p-4 pb-3">
         <div className="flex items-center justify-between mb-4">
@@ -50,10 +50,7 @@ export default function Sidebar() {
             <div className="w-8 h-8 bg-primary/10 rounded-xl flex items-center justify-center">
               <Coffee size={16} className="text-primary" />
             </div>
-            <div>
-              <h1 className="text-base font-bold text-charcoal tracking-tight">namou</h1>
-              <p className="text-[10px] text-charcoal-lighter">오늘의 예약 관리</p>
-            </div>
+            <h1 className="text-base font-bold text-charcoal tracking-tight">namou</h1>
           </div>
           <button
             onClick={() => openModal()}
@@ -89,7 +86,6 @@ export default function Sidebar() {
                 )}
               >
                 <Icon size={11} />
-                {tab.label}
                 <span
                   className={cn(
                     'inline-flex items-center justify-center',
@@ -121,33 +117,14 @@ export default function Sidebar() {
             )}
           </div>
         ) : (
-          <div className="space-y-3">
-            {lunchReservations.length > 0 && (
-              <div>
-                <div className="flex items-center gap-1 mb-1.5 px-0.5">
-                  <Sun size={11} className="text-yellow-600" />
-                  <span className="text-[10px] font-semibold text-charcoal-light">점심</span>
-                  <span className="text-[9px] text-charcoal-lighter">({lunchReservations.length})</span>
-                </div>
-                <div className="space-y-2">{lunchReservations.map(renderReservation)}</div>
-              </div>
-            )}
-            {dinnerReservations.length > 0 && (
-              <div>
-                <div className="flex items-center gap-1 mb-1.5 px-0.5">
-                  <Moon size={11} className="text-indigo-400" />
-                  <span className="text-[10px] font-semibold text-charcoal-light">저녁</span>
-                  <span className="text-[9px] text-charcoal-lighter">({dinnerReservations.length})</span>
-                </div>
-                <div className="space-y-2">{dinnerReservations.map(renderReservation)}</div>
-              </div>
-            )}
+          <div className="space-y-2">
+            {filteredReservations.map(renderReservation)}
           </div>
         )}
       </div>
 
       {/* Footer */}
-      <div className="px-4 py-3 border-t border-border bg-cream/50">
+      <div className="px-4 py-2.5 border-t border-border bg-cream/50">
         <div className="flex items-center justify-around text-center">
           <div>
             <p className="text-base font-bold text-primary">{waitingCount}</p>
@@ -160,7 +137,7 @@ export default function Sidebar() {
           </div>
           <div className="w-px h-7 bg-border" />
           <div>
-            <p className="text-base font-bold text-charcoal">{reservations.length}</p>
+            <p className="text-base font-bold text-charcoal">{sessionReservations.length}</p>
             <p className="text-[10px] text-charcoal-lighter">전체</p>
           </div>
         </div>

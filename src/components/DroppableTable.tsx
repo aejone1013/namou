@@ -20,6 +20,7 @@ export default function DroppableTable({ table }: DroppableTableProps) {
 
   return (
     <>
+      {/* Droppable zone — pointer-events only active during drag */}
       <div
         ref={setNodeRef}
         className="absolute"
@@ -29,6 +30,7 @@ export default function DroppableTable({ table }: DroppableTableProps) {
           width: table.width,
           height: table.height,
           zIndex: isOver ? 15 : 10,
+          pointerEvents: isDragActive ? 'auto' : 'none',
         }}
       />
 

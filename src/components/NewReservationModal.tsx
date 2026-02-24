@@ -2,10 +2,10 @@ import { useState, useCallback, useEffect } from 'react'
 import { X, UserPlus, Clock, Users, Phone, MessageSquare, Minus, Plus, Sun, Moon } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useReservationStore } from '@/store/useReservationStore'
-import { getStartTimeOptions, getFixedEndTime, formatFrenchPhone } from '@/data/dummy'
+import { getStartTimeOptions, getFixedEndTime, formatFrenchPhone, timeToMinutes } from '@/data/dummy'
 
 export default function NewReservationModal() {
-  const { isModalOpen, closeModal, addReservation, editingReservation, updateReservation } = useReservationStore()
+  const { isModalOpen, closeModal, addReservation, editingReservation, updateReservation, reservations } = useReservationStore()
 
   const [name, setName] = useState('')
   const [partySize, setPartySize] = useState(2)
@@ -51,8 +51,8 @@ export default function NewReservationModal() {
 
   // 전화번호 포맷
   const handlePhoneChange = (val: string) => {
-    // +나 숫자만 허용
-    const cleaned = val.replace(/[^\d+]/g, '')
+    // +나 숫자만 허용, 최대 13자리 (+33 포함)
+    const cleaned = val.replace(/[^\d+]/g, '').slice(0, 13)
     setPhone(formatFrenchPhone(cleaned))
   }
 
@@ -66,9 +66,29 @@ export default function NewReservationModal() {
     setNote('')
   }, [])
 
+  const hasDuplicate = (): boolean => {
+    const newStart = timeToMinutes(startTime)
+    const newEnd = timeToMinutes(endTime)
+    const trimmedName = name.trim().toLowerCase()
+    return reservations.some((r) => {
+      if (isEditing && editingReservation && r.id === editingReservation.id) return false
+      if (r.status === 'completed') return false
+      if (r.name.toLowerCase() !== trimmedName) return false
+      const rStart = timeToMinutes(r.startTime)
+      const rEnd = timeToMinutes(r.endTime)
+      return newStart < rEnd && newEnd > rStart
+    })
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim() || !partySize || !startTime || !endTime) return
+
+    if (hasDuplicate()) {
+      if (!window.confirm(`'${name.trim()}' 이름으로 같은 시간대에 이미 예약이 있습니다. 그래도 추가하시겠습니까?`)) {
+        return
+      }
+    }
 
     if (isEditing && editingReservation) {
       updateReservation(editingReservation.id, {
@@ -114,7 +134,7 @@ export default function NewReservationModal() {
         className={cn(
           'relative w-[440px] bg-surface rounded-3xl shadow-2xl shadow-charcoal/10',
           'border border-border',
-          'animate-in fade-in zoom-in-95 duration-200'
+          'animate-in zoom-in-95'
         )}
       >
         {/* 헤더 */}
@@ -180,14 +200,14 @@ export default function NewReservationModal() {
                   type="button"
                   onClick={() => setPartySize(Math.max(1, partySize - 1))}
                   className={cn(
-                    'w-11 h-11 flex items-center justify-center rounded-xl',
+                    'w-12 h-12 flex items-center justify-center rounded-xl',
                     'bg-cream border border-border',
                     'text-charcoal hover:bg-border hover:text-charcoal',
                     'transition-colors',
                     'active:scale-95'
                   )}
                 >
-                  <Minus size={18} />
+                  <Minus size={20} />
                 </button>
                 <span className="flex-1 text-center text-lg font-bold text-charcoal">
                   {partySize}
@@ -196,14 +216,14 @@ export default function NewReservationModal() {
                   type="button"
                   onClick={() => setPartySize(Math.min(20, partySize + 1))}
                   className={cn(
-                    'w-11 h-11 flex items-center justify-center rounded-xl',
+                    'w-12 h-12 flex items-center justify-center rounded-xl',
                     'bg-cream border border-border',
                     'text-charcoal hover:bg-border hover:text-charcoal',
                     'transition-colors',
                     'active:scale-95'
                   )}
                 >
-                  <Plus size={18} />
+                  <Plus size={20} />
                 </button>
               </div>
             </div>

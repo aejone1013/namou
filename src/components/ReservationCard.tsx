@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Clock, Users, MessageSquare, Phone, Trash2, Armchair, Pencil, ArrowRightLeft } from 'lucide-react'
+import { Users, MessageSquare, Phone, Trash2, Armchair, Pencil, Sun, Moon, CheckCircle } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import type { Reservation } from '@/data/dummy'
+import { compareTableLabel } from '@/data/dummy'
 import { useReservationStore } from '@/store/useReservationStore'
 
 interface ReservationCardProps {
@@ -30,43 +31,42 @@ const statusConfig = {
 }
 
 export default function ReservationCard({ reservation }: ReservationCardProps) {
-  const { removeReservation, tables, seatReservation, openModal } = useReservationStore()
+  const { removeReservation, tables, seatReservation, openModal, clearTable } = useReservationStore()
   const config = statusConfig[reservation.status]
   const [showTableSelect, setShowTableSelect] = useState(false)
-  const [showMoveSelect, setShowMoveSelect] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
-  // 착석한 테이블 찾기
-  const seatedTable = reservation.tableId
-    ? tables.find((t) => t.id === reservation.tableId)
-    : tables.find((t) => t.reservationId === reservation.id)
+  const seatedTable = tables.find((t) => t.currentTeam?.reservationId === reservation.id)
 
-  // 빈 테이블 중 인원수에 맞는 테이블 찾기
-  const availableTables = tables.filter(
+  const availableTables = [...tables.filter(
     (t) => t.status === 'available' && t.seats >= reservation.partySize
-  )
+  )].sort((a, b) => compareTableLabel(a.label, b.label))
 
   const handleSeatAtTable = (tableId: string) => {
     seatReservation(reservation.id, tableId)
     setShowTableSelect(false)
-    setShowMoveSelect(false)
+  }
+
+  const handleComplete = () => {
+    if (seatedTable) {
+      clearTable(seatedTable.id)
+    }
   }
 
   return (
     <div
       className={cn(
-        'bg-surface rounded-2xl p-4 border border-border',
+        'bg-surface rounded-2xl p-3.5 border border-border',
         'hover:border-border-hover hover:shadow-md hover:shadow-primary/5',
         'transition-all duration-200',
         'group'
       )}
     >
-      <div className="flex items-start justify-between mb-2">
-        <h3 className="font-semibold text-charcoal text-[15px]">
+      <div className="flex items-start justify-between mb-1.5">
+        <h3 className="font-semibold text-charcoal text-sm">
           {reservation.name}
         </h3>
         <div className="flex items-center gap-1.5">
-          {/* 착석 테이블 표시 */}
           {reservation.status === 'seated' && seatedTable && (
             <span className="text-[10px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded-md">
               {seatedTable.label}
@@ -74,9 +74,8 @@ export default function ReservationCard({ reservation }: ReservationCardProps) {
           )}
           <span
             className={cn(
-              'inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full',
-              config.bg,
-              config.text
+              'inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full',
+              config.bg, config.text
             )}
           >
             <span className={cn('w-1.5 h-1.5 rounded-full', config.dot)} />
@@ -85,189 +84,111 @@ export default function ReservationCard({ reservation }: ReservationCardProps) {
         </div>
       </div>
 
-      <div className="flex items-center gap-4 text-charcoal-light text-sm">
-        <span className="inline-flex items-center gap-1.5">
-          <Clock size={14} className="text-charcoal-lighter" />
-          {reservation.startTime} ~ {reservation.endTime}
+      <div className="flex items-center gap-3 text-charcoal-light text-xs">
+        <span className="inline-flex items-center gap-1">
+          {reservation.period === 'lunch' ? (
+            <Sun size={11} className="text-yellow-600" />
+          ) : (
+            <Moon size={11} className="text-indigo-400" />
+          )}
+          {reservation.startTime}~{reservation.endTime}
         </span>
-        <span className="inline-flex items-center gap-1.5">
-          <Users size={14} className="text-charcoal-lighter" />
+        <span className="inline-flex items-center gap-1">
+          <Users size={12} className="text-charcoal-lighter" />
           {reservation.partySize}명
         </span>
       </div>
 
       {reservation.phone && (
-        <div className="flex items-center gap-1.5 mt-2 text-charcoal-lighter text-xs">
-          <Phone size={12} />
+        <div className="flex items-center gap-1.5 mt-1.5 text-charcoal-lighter text-[11px]">
+          <Phone size={11} />
           {reservation.phone}
         </div>
       )}
 
       {reservation.note && (
-        <div className="flex items-start gap-1.5 mt-2 text-xs text-primary-dark bg-primary/5 rounded-xl px-3 py-2">
-          <MessageSquare size={12} className="mt-0.5 shrink-0" />
+        <div className="flex items-start gap-1.5 mt-1.5 text-[11px] text-primary-dark bg-primary/5 rounded-xl px-2.5 py-1.5">
+          <MessageSquare size={11} className="mt-0.5 shrink-0" />
           {reservation.note}
         </div>
       )}
 
       {/* 테이블 선택 패널 */}
       {showTableSelect && (
-        <div className="mt-3 pt-3 border-t border-border">
-          <p className="text-[11px] text-charcoal-lighter mb-2">테이블 선택:</p>
+        <div className="mt-2.5 pt-2.5 border-t border-border">
+          <p className="text-[11px] text-charcoal-lighter mb-1.5">테이블 선택:</p>
           <div className="flex flex-wrap gap-1.5">
             {availableTables.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => handleSeatAtTable(t.id)}
-                className={cn(
-                  'text-xs font-medium px-3 py-1.5 rounded-lg',
-                  'bg-cream hover:bg-primary/10 text-charcoal',
-                  'border border-border hover:border-primary/30',
-                  'transition-colors'
-                )}
+              <button key={t.id} onClick={() => handleSeatAtTable(t.id)}
+                className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-cream hover:bg-primary/10 text-charcoal border border-border hover:border-primary/30 transition-colors"
               >
                 {t.label} ({t.seats}석)
               </button>
             ))}
           </div>
-          <button
-            onClick={() => setShowTableSelect(false)}
-            className="text-[11px] text-charcoal-lighter mt-2 hover:text-charcoal"
-          >
-            취소
-          </button>
-        </div>
-      )}
-
-      {/* 테이블 이동 패널 */}
-      {showMoveSelect && (
-        <div className="mt-3 pt-3 border-t border-border">
-          <p className="text-[11px] text-charcoal-lighter mb-2">이동할 테이블:</p>
-          <div className="flex flex-wrap gap-1.5">
-            {availableTables.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => handleSeatAtTable(t.id)}
-                className={cn(
-                  'text-xs font-medium px-3 py-1.5 rounded-lg',
-                  'bg-cream hover:bg-primary/10 text-charcoal',
-                  'border border-border hover:border-primary/30',
-                  'transition-colors'
-                )}
-              >
-                {t.label} ({t.seats}석)
-              </button>
-            ))}
-          </div>
-          {availableTables.length === 0 && (
-            <p className="text-[11px] text-charcoal-lighter">빈 테이블이 없습니다</p>
-          )}
-          <button
-            onClick={() => setShowMoveSelect(false)}
-            className="text-[11px] text-charcoal-lighter mt-2 hover:text-charcoal"
-          >
-            취소
-          </button>
+          <button onClick={() => setShowTableSelect(false)} className="text-[10px] text-charcoal-lighter mt-1.5 hover:text-charcoal">취소</button>
         </div>
       )}
 
       {/* 삭제 확인 */}
       {showDeleteConfirm && (
-        <div className="mt-3 pt-3 border-t border-border">
-          <p className="text-xs text-charcoal mb-2">이 예약을 삭제하시겠습니까?</p>
+        <div className="mt-2.5 pt-2.5 border-t border-border">
+          <p className="text-[11px] text-charcoal mb-2">이 예약을 삭제하시겠습니까?</p>
           <div className="flex gap-2">
             <button
-              onClick={() => {
-                removeReservation(reservation.id)
-                setShowDeleteConfirm(false)
-              }}
-              className={cn(
-                'flex-1 text-xs font-medium py-1.5 rounded-xl',
-                'text-white bg-occupied hover:bg-occupied/80',
-                'transition-colors'
-              )}
-            >
-              삭제
-            </button>
+              onClick={() => { removeReservation(reservation.id); setShowDeleteConfirm(false) }}
+              className="flex-1 text-[11px] font-medium py-1.5 rounded-xl text-white bg-occupied hover:bg-occupied/80 transition-colors"
+            >삭제</button>
             <button
               onClick={() => setShowDeleteConfirm(false)}
-              className={cn(
-                'flex-1 text-xs font-medium py-1.5 rounded-xl',
-                'text-charcoal-light bg-cream hover:bg-border',
-                'transition-colors'
-              )}
-            >
-              취소
-            </button>
+              className="flex-1 text-[11px] font-medium py-1.5 rounded-xl text-charcoal-light bg-cream hover:bg-border transition-colors"
+            >취소</button>
           </div>
         </div>
       )}
 
       {/* 액션 버튼 */}
-      {!showTableSelect && !showDeleteConfirm && !showMoveSelect && (
-        <div
-          className={cn(
-            'flex items-center gap-2 mt-3 pt-3 border-t border-border',
-            'opacity-0 group-hover:opacity-100 transition-opacity duration-150'
-          )}
-        >
+      {!showTableSelect && !showDeleteConfirm && (
+        <div className="flex items-center gap-1.5 mt-2.5 pt-2.5 border-t border-border">
           {reservation.status === 'waiting' && availableTables.length > 0 && (
             <button
               onClick={() => setShowTableSelect(true)}
-              className={cn(
-                'flex-1 inline-flex items-center justify-center gap-1.5',
-                'text-xs font-medium py-1.5 rounded-xl',
-                'text-white bg-primary hover:bg-primary-dark',
-                'transition-colors'
-              )}
+              className="flex-1 inline-flex items-center justify-center gap-1 text-[11px] font-medium py-1.5 rounded-xl text-white bg-primary hover:bg-primary-dark transition-colors"
             >
-              <Armchair size={13} />
+              <Armchair size={12} />
               착석
             </button>
           )}
           {reservation.status === 'waiting' && availableTables.length === 0 && (
-            <span className="flex-1 text-xs text-charcoal-lighter text-center py-1.5">
-              빈 테이블 없음
-            </span>
+            <span className="flex-1 text-[11px] text-charcoal-lighter text-center py-1.5">빈 테이블 없음</span>
           )}
-          {/* 착석 중일 때 테이블 이동 버튼 */}
+
+          {/* Seated: complete only */}
           {reservation.status === 'seated' && (
             <button
-              onClick={() => setShowMoveSelect(true)}
-              className={cn(
-                'flex-1 inline-flex items-center justify-center gap-1.5',
-                'text-xs font-medium py-1.5 rounded-xl',
-                'text-primary bg-primary/10 hover:bg-primary/20',
-                'transition-colors'
-              )}
+              onClick={handleComplete}
+              className="flex-1 inline-flex items-center justify-center gap-1 text-[11px] font-medium py-1.5 rounded-xl text-white bg-available hover:bg-available/80 transition-colors"
             >
-              <ArrowRightLeft size={13} />
-              테이블 이동
+              <CheckCircle size={12} />
+              식사 완료
             </button>
           )}
+
           {reservation.status !== 'completed' && (
             <button
               onClick={() => openModal(reservation)}
-              className={cn(
-                'inline-flex items-center justify-center',
-                'w-8 h-8 rounded-xl',
-                'text-charcoal-lighter hover:text-primary hover:bg-primary/10',
-                'transition-colors'
-              )}
+              className="inline-flex items-center justify-center w-7 h-7 rounded-xl text-charcoal-lighter hover:text-primary hover:bg-primary/10 transition-colors"
+              title="편집"
             >
-              <Pencil size={14} />
+              <Pencil size={13} />
             </button>
           )}
           <button
             onClick={() => setShowDeleteConfirm(true)}
-            className={cn(
-              'inline-flex items-center justify-center',
-              'w-8 h-8 rounded-xl',
-              'text-charcoal-lighter hover:text-occupied hover:bg-occupied-light',
-              'transition-colors'
-            )}
+            className="inline-flex items-center justify-center w-7 h-7 rounded-xl text-charcoal-lighter hover:text-occupied hover:bg-occupied-light transition-colors"
+            title="삭제"
           >
-            <Trash2 size={14} />
+            <Trash2 size={13} />
           </button>
         </div>
       )}

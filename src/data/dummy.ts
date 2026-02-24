@@ -11,6 +11,32 @@ export interface Reservation {
   note?: string
 }
 
+export interface CurrentTeam {
+  reservationId?: string   // walk-in이면 undefined
+  name: string
+  partySize: number
+  seatedAt: string         // "13:00" 형식
+}
+
+export interface NextBooking {
+  reservationId: string
+  name: string
+  partySize: number
+  startTime: string
+  endTime: string
+  targetLabel?: string  // 병합 테이블 중 특정 서브 테이블 지정 (예: "T1")
+}
+
+export interface MergedOrigin {
+  id: string
+  label: string
+  seats: number
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 export interface TableInfo {
   id: string
   label: string
@@ -21,15 +47,15 @@ export interface TableInfo {
   width: number
   height: number
   status: 'available' | 'occupied' | 'reserved'
-  reservation?: string
-  reservationId?: string
-  mergedFrom?: string[]  // 병합 원본 테이블 ID (분할 복원용)
+  currentTeam: CurrentTeam | null
+  nextBooking: NextBooking | null
+  mergedFrom?: MergedOrigin[]  // 병합 원본 테이블 정보 (분할 복원용)
 }
 
-// 테이블 크기 상수 (축소)
-export const TABLE_WIDTH = 72
-export const TABLE_BASE_HEIGHT = 60
-export const TABLE_HEIGHT_PER_EXTRA = 18
+// 테이블 크기 상수 — 커진 크기
+export const TABLE_WIDTH = 84
+export const TABLE_BASE_HEIGHT = 72
+export const TABLE_HEIGHT_PER_EXTRA = 16
 
 // 스냅 그리드 크기
 export const SNAP_SIZE = 12
@@ -83,6 +109,38 @@ export function timeToMinutes(time: string): number {
 export function getPeriodFromTime(time: string): 'lunch' | 'dinner' {
   const minutes = timeToMinutes(time)
   return minutes < 17 * 60 ? 'lunch' : 'dinner'
+}
+
+// 현재 시간을 HH:MM 형식으로 반환
+export function getCurrentTimeHHMM(): string {
+  const now = new Date()
+  const h = now.getHours()
+  const m = now.getMinutes()
+  return `${h}:${String(m).padStart(2, '0')}`
+}
+
+/** 테이블 라벨에서 숫자 추출: "T1" → 1, "T1+T2" → 1, "T1~T3" → 1 */
+export function getTableNumber(label: string): number {
+  const match = label.match(/T(\d+)/)
+  return match ? parseInt(match[1], 10) : 0
+}
+
+/** 테이블 번호 배열이 연속인지 확인 */
+export function isContiguousRange(nums: number[]): boolean {
+  const sorted = [...nums].sort((a, b) => a - b)
+  return sorted.every((n, i) => i === 0 || n === sorted[i - 1] + 1)
+}
+
+/** 병합 라벨 생성: 2개 T1+T2, 3개+ T1~T3 */
+export function getMergeLabel(nums: number[]): string {
+  const sorted = [...nums].sort((a, b) => a - b)
+  if (sorted.length === 2) return `T${sorted[0]}+T${sorted[1]}`
+  return `T${sorted[0]}~T${sorted[sorted.length - 1]}`
+}
+
+/** 테이블 라벨 숫자 순 정렬 비교 함수 */
+export function compareTableLabel(a: string, b: string): number {
+  return getTableNumber(a) - getTableNumber(b)
 }
 
 // 프랑스 전화번호 포맷: 06 12 34 56 78 or +33 6 12 34 56 78
