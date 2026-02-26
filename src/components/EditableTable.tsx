@@ -3,6 +3,7 @@ import { Users, Move, GripHorizontal } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import type { TableInfo } from '@/data/dummy'
 import { TABLE_WIDTH, TABLE_BASE_HEIGHT } from '@/data/dummy'
+import { absoluteRectStyle } from '@/features/floor-map/floorMapStyles'
 import { useReservationStore } from '@/store/useReservationStore'
 
 interface EditableTableProps {
@@ -108,14 +109,9 @@ export default function EditableTable({ table }: EditableTableProps) {
           : 'border-dashed border-charcoal-lighter/40 hover:border-primary/50',
         isDragging ? 'cursor-grabbing opacity-90' : 'cursor-grab',
         'rounded-xl',
-        'bg-surface'
+        'bg-surface/95 backdrop-blur-[1px]'
       )}
-      style={{
-        left: table.x,
-        top: table.y,
-        width: table.width,
-        height: table.height,
-      }}
+      style={absoluteRectStyle(table)}
     >
       <Move size={10} className="text-charcoal-lighter mb-0.5" />
       <span className="text-[11px] font-bold text-charcoal leading-none">{table.label}</span>
@@ -132,7 +128,7 @@ export default function EditableTable({ table }: EditableTableProps) {
             'absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-6 h-3',
             'bg-primary rounded-md cursor-s-resize',
             'flex items-center justify-center',
-            'shadow-md hover:scale-110 transition-transform'
+            'shadow-md hover:scale-110 transition-transform ring-2 ring-surface'
           )}
         >
           <GripHorizontal size={8} className="text-white" />

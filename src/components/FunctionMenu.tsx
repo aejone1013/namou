@@ -7,7 +7,7 @@ export default function FunctionMenu() {
   const [isOpen, setIsOpen] = useState(false)
   const [confirmAction, setConfirmAction] = useState<'reservations' | 'layout' | null>(null)
   const ref = useRef<HTMLDivElement>(null)
-  const { resetReservations, resetTableLayout, toggleEditMode, isEditMode } = useReservationStore()
+  const { resetReservations, resetSetup, toggleEditMode, isEditMode } = useReservationStore()
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -32,7 +32,7 @@ export default function FunctionMenu() {
 
   const handleResetLayout = () => {
     if (confirmAction === 'layout') {
-      resetTableLayout()
+      resetSetup()
       setConfirmAction(null)
       setIsOpen(false)
     } else {

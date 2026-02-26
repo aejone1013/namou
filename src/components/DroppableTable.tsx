@@ -1,6 +1,7 @@
 import { useDroppable } from '@dnd-kit/core'
 import { cn } from '@/lib/cn'
 import type { TableInfo } from '@/data/dummy'
+import { absoluteRectStyle, expandedRectStyle } from '@/features/floor-map/floorMapStyles'
 import TableShape from './TableShape'
 
 interface DroppableTableProps {
@@ -20,16 +21,14 @@ export default function DroppableTable({ table }: DroppableTableProps) {
 
   return (
     <>
+      {/* Droppable zone — pointer-events only active during drag */}
       <div
         ref={setNodeRef}
         className="absolute"
-        style={{
-          left: table.x,
-          top: table.y,
-          width: table.width,
-          height: table.height,
+        style={absoluteRectStyle(table, {
           zIndex: isOver ? 15 : 10,
-        }}
+          pointerEvents: isDragActive ? 'auto' : 'none',
+        })}
       />
 
       <TableShape table={table} />
@@ -45,13 +44,7 @@ export default function DroppableTable({ table }: DroppableTableProps) {
               : 'border-primary/30 bg-primary/5',
             'rounded-xl'
           )}
-          style={{
-            left: table.x - 3,
-            top: table.y - 3,
-            width: table.width + 6,
-            height: table.height + 6,
-            zIndex: 14,
-          }}
+          style={expandedRectStyle(table, 3, 14)}
         >
           {isOver && (
             <span className="text-[9px] font-bold text-primary bg-surface/90 px-1.5 py-0.5 rounded-full shadow-sm">

@@ -1,12 +1,9 @@
-import {
-  Trash2, Plus, Users, Tag, Merge,
-  AlignStartVertical, AlignEndVertical,
-  AlignStartHorizontal, AlignEndHorizontal,
-  AlignCenterVertical, AlignCenterHorizontal,
-  GripHorizontal, GripVertical,
-} from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Trash2, Plus, Tag, CheckSquare } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useReservationStore } from '@/store/useReservationStore'
+import { useToastStore } from '@/store/useToastStore'
+import { toastActions, toastMessages } from '@/features/toast/toastPresets'
 
 export default function TableEditPanel() {
   const {
@@ -17,31 +14,26 @@ export default function TableEditPanel() {
     updateTable,
     addTable,
     removeTable,
-    mergeTables,
-    alignTables,
-    distributeTables,
+    saveUndoSnapshot,
+    undo,
   } = useReservationStore()
+  const toast = useToastStore()
 
   const selectedTable =
     selectedTableIds.length === 1
       ? tables.find((t) => t.id === selectedTableIds[0])
       : null
 
-  const canMerge = selectedTableIds.length >= 2
-  const canAlign = selectedTableIds.length >= 2
-  const canDistribute = selectedTableIds.length >= 3
+  const [labelDraft, setLabelDraft] = useState(selectedTable?.label || '')
+  const [labelError, setLabelError] = useState(false)
 
-  const alignBtnClass = (disabled: boolean) =>
-    cn(
-      'flex items-center justify-center w-8 h-8 rounded-lg',
-      'transition-colors',
-      disabled
-        ? 'text-charcoal-lighter/40 cursor-not-allowed'
-        : 'text-charcoal-light hover:bg-primary/10 hover:text-primary'
-    )
+  useEffect(() => {
+    setLabelDraft(selectedTable?.label || '')
+    setLabelError(false)
+  }, [selectedTable?.id, selectedTable?.label])
 
   return (
-    <div className="w-[220px] shrink-0 bg-surface rounded-2xl border border-border shadow-lg z-30 overflow-hidden self-start">
+    <div className="bg-surface overflow-hidden">
       {/* 헤더 */}
       <div className="px-3 py-2.5 border-b border-border bg-cream/50">
         <p className="text-[11px] font-semibold text-charcoal">테이블 편집</p>
@@ -61,129 +53,10 @@ export default function TableEditPanel() {
           >
             <Plus size={12} /> 추가
           </button>
-          <button
-            onClick={alignTables}
-            className={cn(
-              'inline-flex items-center justify-center gap-1',
-              'text-[11px] font-medium py-1.5 px-2.5 rounded-lg',
-              'bg-cream hover:bg-border text-charcoal-light',
-              'transition-colors border border-border'
-            )}
-          >
-            <AlignCenter size={12} /> 정렬
-          </button>
         </div>
-
-        <button
-          onClick={mergeTables}
-          disabled={!canMerge}
-          className={cn(
-            'w-full inline-flex items-center justify-center gap-1',
-            'text-[11px] font-medium py-1.5 rounded-lg',
-            'transition-colors border',
-            canMerge
-              ? 'bg-primary/10 border-primary/30 text-primary hover:bg-primary/20'
-              : 'bg-cream border-border text-charcoal-lighter/50 cursor-not-allowed'
-          )}
-        >
-          <Merge size={12} />
-          병합 {canMerge && `(${selectedTableIds.length}개)`}
-        </button>
       </div>
 
-      {/* 정렬 & 배분 (2개 이상 선택 시) */}
-      {canAlign && (
-        <div className="px-4 py-3 border-b border-border space-y-2">
-          <p className="text-[11px] text-charcoal-lighter">정렬</p>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => alignTables('left')}
-              disabled={!canAlign}
-              className={alignBtnClass(!canAlign)}
-              title="왼쪽 정렬"
-            >
-              <AlignStartVertical size={14} />
-            </button>
-            <button
-              onClick={() => alignTables('horizontal-center')}
-              disabled={!canAlign}
-              className={alignBtnClass(!canAlign)}
-              title="수평 중앙 정렬"
-            >
-              <AlignCenterVertical size={14} />
-            </button>
-            <button
-              onClick={() => alignTables('right')}
-              disabled={!canAlign}
-              className={alignBtnClass(!canAlign)}
-              title="오른쪽 정렬"
-            >
-              <AlignEndVertical size={14} />
-            </button>
-            <div className="w-px h-5 bg-border mx-0.5" />
-            <button
-              onClick={() => alignTables('top')}
-              disabled={!canAlign}
-              className={alignBtnClass(!canAlign)}
-              title="위쪽 정렬"
-            >
-              <AlignStartHorizontal size={14} />
-            </button>
-            <button
-              onClick={() => alignTables('vertical-center')}
-              disabled={!canAlign}
-              className={alignBtnClass(!canAlign)}
-              title="수직 중앙 정렬"
-            >
-              <AlignCenterHorizontal size={14} />
-            </button>
-            <button
-              onClick={() => alignTables('bottom')}
-              disabled={!canAlign}
-              className={alignBtnClass(!canAlign)}
-              title="아래쪽 정렬"
-            >
-              <AlignEndHorizontal size={14} />
-            </button>
-          </div>
-
-          {canDistribute && (
-            <>
-              <p className="text-[11px] text-charcoal-lighter mt-2">균등 배분</p>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => distributeTables('horizontal')}
-                  className={cn(
-                    'flex-1 inline-flex items-center justify-center gap-1',
-                    'text-[11px] font-medium py-1.5 rounded-lg',
-                    'text-charcoal-light hover:bg-primary/10 hover:text-primary',
-                    'transition-colors'
-                  )}
-                  title="가로 균등 배분"
-                >
-                  <GripHorizontal size={13} />
-                  가로
-                </button>
-                <button
-                  onClick={() => distributeTables('vertical')}
-                  className={cn(
-                    'flex-1 inline-flex items-center justify-center gap-1',
-                    'text-[11px] font-medium py-1.5 rounded-lg',
-                    'text-charcoal-light hover:bg-primary/10 hover:text-primary',
-                    'transition-colors'
-                  )}
-                  title="세로 균등 배분"
-                >
-                  <GripVertical size={13} />
-                  세로
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      {/* 선택된 테이블 속성 (단일 선택 시) */}
+      {/* 선택된 테이블 속성 */}
       {selectedTable ? (
         <div className="px-3 py-2.5 space-y-2.5">
           <p className="text-[10px] text-charcoal-lighter">선택된 테이블</p>
@@ -194,55 +67,55 @@ export default function TableEditPanel() {
             </label>
             <input
               type="text"
-              value={selectedTable.label}
-              onChange={(e) => updateTable(selectedTable.id, { label: e.target.value })}
+              value={labelDraft}
+              onChange={(e) => {
+                setLabelDraft(e.target.value)
+                setLabelError(false)
+              }}
+              onBlur={() => {
+                if (/^T\d+$/.test(labelDraft)) {
+                  updateTable(selectedTable.id, { label: labelDraft })
+                  setLabelError(false)
+                } else {
+                  setLabelDraft(selectedTable.label)
+                  setLabelError(true)
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+              }}
               className={cn(
                 'w-full px-2.5 py-1 text-xs rounded-lg',
-                'bg-cream border border-border text-charcoal',
-                'focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/10'
+                'bg-cream border text-charcoal',
+                'focus:outline-none focus:ring-1',
+                labelError
+                  ? 'border-occupied focus:border-occupied focus:ring-occupied/20'
+                  : 'border-border focus:border-primary/40 focus:ring-primary/10'
               )}
             />
-          </div>
-
-          <div>
-            <label className="flex items-center gap-1 text-[10px] text-charcoal-light mb-0.5">
-              <Users size={10} /> 좌석 수
-            </label>
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => updateTable(selectedTable.id, { seats: Math.max(1, selectedTable.seats - 1) })}
-                className="w-7 h-7 flex items-center justify-center rounded-lg bg-cream border border-border text-charcoal hover:bg-border transition-colors active:scale-95"
-              >
-                <Minus size={14} />
-              </button>
-              <span className="flex-1 text-center text-sm font-bold text-charcoal">{selectedTable.seats}</span>
-              <button
-                onClick={() => updateTable(selectedTable.id, { seats: Math.min(20, selectedTable.seats + 1) })}
-                className="w-7 h-7 flex items-center justify-center rounded-lg bg-cream border border-border text-charcoal hover:bg-border transition-colors active:scale-95"
-              >
-                <Plus size={14} />
-              </button>
-            </div>
+            {labelError && (
+              <p className="text-[9px] text-occupied mt-0.5">T+숫자 형식 (예: T1, T2)</p>
+            )}
           </div>
 
           <div className="flex gap-1.5">
-            {/* 분할 */}
-            {canSplit && (
-              <button
-                onClick={() => splitTable(selectedTable.id)}
-                className={cn(
-                  'flex-1 inline-flex items-center justify-center gap-1',
-                  'text-[11px] font-medium py-1.5 rounded-lg',
-                  'text-primary bg-primary/10 hover:bg-primary/20',
-                  'transition-colors'
-                )}
-              >
-                <Scissors size={12} />
-                분할
-              </button>
-            )}
             <button
-              onClick={() => removeTable(selectedTable.id)}
+              onClick={() => {
+                const { sessionData } = useReservationStore.getState()
+                const hasOccupied = (['lunch', 'dinner'] as const).some((s) => {
+                  const sd = sessionData[s]
+                  const ts = sd.tableStates[selectedTable.id]
+                  if (ts?.currentTeam || ts?.nextBooking) return true
+                  return sd.merges.some((m) =>
+                    m.mergedFrom.some((o) => o.id === selectedTable.id) &&
+                    (sd.tableStates[m.mergedId]?.currentTeam || sd.tableStates[m.mergedId]?.nextBooking)
+                  )
+                })
+                if (hasOccupied && !window.confirm('이 테이블에 착석/예약이 있습니다. 삭제하면 해당 예약이 대기 상태로 돌아갑니다. 계속하시겠습니까?')) return
+                saveUndoSnapshot('테이블 삭제')
+                removeTable(selectedTable.id)
+                toast.show(toastMessages.tableDeleted, 'info', toastActions.undo(() => undo()))
+              }}
               className={cn(
                 'flex-1 inline-flex items-center justify-center gap-1',
                 'text-[11px] font-medium py-1.5 rounded-lg',
@@ -254,15 +127,6 @@ export default function TableEditPanel() {
               삭제
             </button>
           </div>
-        </div>
-      ) : selectedTableIds.length >= 2 ? (
-        <div className="px-4 py-4 text-center space-y-2">
-          <p className="text-xs font-medium text-primary">
-            {selectedTableIds.length}개 테이블 선택됨
-          </p>
-          <p className="text-[11px] text-charcoal-lighter">
-            위의 정렬/병합 기능을 사용하세요
-          </p>
         </div>
       ) : (
         <div className="px-3 py-4 text-center">
@@ -281,7 +145,11 @@ export default function TableEditPanel() {
           )}
         </div>
         <div className="flex flex-wrap gap-1">
-          {tables.map((t) => {
+          {[...tables].sort((a, b) => {
+            const numA = parseInt(a.label.replace(/\D/g, '')) || 0
+            const numB = parseInt(b.label.replace(/\D/g, '')) || 0
+            return numA - numB
+          }).map((t) => {
             const isSelected = selectedTableIds.includes(t.id)
             return (
               <button
@@ -305,9 +173,6 @@ export default function TableEditPanel() {
             )
           })}
         </div>
-        <p className="text-[9px] text-charcoal-lighter mt-1.5 text-center">
-          클릭으로 다중 선택 후 병합
-        </p>
       </div>
     </div>
   )
