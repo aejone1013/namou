@@ -1,8 +1,0 @@
-version: 1.0.0
-files:
-  - url: namou-1.0.0-setup.exe
-    sha512: CGu4GfcaZXVjTLIocJshWd2QZ0iO9ALwkq0znlLvJpjl5XsJAi9NeGoHYfzjOYnjHwFrA50sEQbG6gecdvwFUw==
-    size: 99084838
-path: namou-1.0.0-setup.exe
-sha512: CGu4GfcaZXVjTLIocJshWd2QZ0iO9ALwkq0znlLvJpjl5XsJAi9NeGoHYfzjOYnjHwFrA50sEQbG6gecdvwFUw==
-releaseDate: '2026-02-27T21:16:38.819Z'
