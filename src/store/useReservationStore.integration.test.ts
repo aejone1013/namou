@@ -340,4 +340,47 @@ describe('useReservationStore integration (multi planned bookings)', () => {
     expect(lunchStates.t2?.plannedBookings?.some((p) => p.reservationId === A.id)).toBe(true)
     expect(lunchStates.t2?.plannedBookings?.some((p) => p.reservationId === B.id) ?? false).toBe(false)
   })
+
+  test('A(T1-3) clear auto-seats B(T2-3) and C(T1), and blocks D(14:30) assignment on occupied overlap', () => {
+    const store = useReservationStore.getState()
+
+    const A = addReservation({ name: 'A', partySize: 6, startTime: '12:00', endTime: '13:30', period: 'lunch' })
+    const B = addReservation({ name: 'B', partySize: 3, startTime: '13:30', endTime: '15:00', period: 'lunch' })
+    const C = addReservation({ name: 'C', partySize: 2, startTime: '13:30', endTime: '15:00', period: 'lunch' })
+    const D = addReservation({ name: 'D', partySize: 2, startTime: '14:30', endTime: '16:00', period: 'lunch' })
+
+    store.setActiveSession('lunch')
+    store.setNextBookingMulti(['t1', 't2', 't3'], A.id, 'T1-3')
+    store.seatWithSelectedMerge(A.id, 't1', ['t2', 't3'])
+
+    // Assign future bookings while A is seated
+    store.setNextBookingMulti(['t2', 't3'], B.id, 'T2-3')
+    store.setNextBookingMulti(['t1'], C.id, 'T1')
+
+    const beforeClear = useReservationStore.getState()
+    const merged = beforeClear.getEffectiveTables().find((t) => t.currentTeam?.reservationId === A.id)
+    expect(merged).toBeTruthy()
+
+    beforeClear.clearTable(merged!.id)
+
+    const afterClear = useReservationStore.getState()
+    const tables = afterClear.getEffectiveTables()
+    const seatedB = afterClear.reservations.find((r) => r.id === B.id)
+    const seatedC = afterClear.reservations.find((r) => r.id === C.id)
+    const waitingD = afterClear.reservations.find((r) => r.id === D.id)
+
+    expect(seatedB?.status).toBe('seated')
+    expect(seatedC?.status).toBe('seated')
+    expect(waitingD?.status).toBe('waiting')
+
+    const bTable = tables.find((t) => t.currentTeam?.reservationId === B.id)
+    const cTable = tables.find((t) => t.currentTeam?.reservationId === C.id)
+    expect(bTable?.label).toBe('T2-3')
+    expect(cTable?.label).toBe('T1')
+
+    // Overlapping assignment on currently occupied T1 (C until 15:00) should be rejected
+    store.setNextBookingMulti(['t1'], D.id, 'T1')
+    const finalLunchStates = useReservationStore.getState().sessionData.lunch.tableStates
+    expect(finalLunchStates.t1?.plannedBookings?.some((p) => p.reservationId === D.id) ?? false).toBe(false)
+  })
 })

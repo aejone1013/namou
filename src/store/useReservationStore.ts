@@ -1224,11 +1224,36 @@ export const useReservationStore = create<ReservationStore>()(
             scopeTableIds: uniqueTableIds,
             ...(targetLabel ? { targetLabel } : {}),
           }
+          const mergedById = new Map(sd.merges.map((m) => [m.mergedId, m] as const))
 
           // Remove duplicate nextBooking for this reservation from any other table
           for (const tid of Object.keys(newTableStates)) {
             const planned = getPlannedBookings(newTableStates[tid]).filter((b) => b.reservationId !== reservationId)
             newTableStates[tid] = setPlannedBookings(newTableStates[tid], planned)
+          }
+
+          // Abort if candidate overlaps with currently occupied reservation scope.
+          // (e.g. C seated on T1 until 15:00, block assigning D 14:30 on T1)
+          for (const [stateTableId, ts] of Object.entries(newTableStates)) {
+            if (ts.status !== 'occupied' || !ts.currentTeam?.reservationId) continue
+            const occupiedReservation = state.reservations.find((r) => r.id === ts.currentTeam!.reservationId)
+            if (!occupiedReservation) continue
+            if (occupiedReservation.id === reservationId) continue
+
+            const occupiedScope = mergedById.get(stateTableId)?.mergedFrom.map((o) => o.id) ?? [stateTableId]
+            if (!bookingScopesOverlap(occupiedScope, uniqueTableIds)) continue
+
+            const occupiedAsBooking: NextBooking = {
+              reservationId: occupiedReservation.id,
+              name: occupiedReservation.name,
+              partySize: occupiedReservation.partySize,
+              startTime: occupiedReservation.startTime,
+              endTime: occupiedReservation.endTime,
+              scopeTableIds: occupiedScope,
+            }
+            if (bookingConflictsOnSameTable(occupiedAsBooking, candidateBooking, reservationId)) {
+              return state
+            }
           }
 
           // Abort if any existing booking in session overlaps in both time and scope.
