@@ -1,10 +1,14 @@
 import { useMemo } from 'react'
-import { Users, Clock } from 'lucide-react'
+import { Users, Clock, X } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useReservationStore } from '@/store/useReservationStore'
 import { LUNCH_TIMES, DINNER_TIMES, timeToMinutes } from '@/data/dummy'
 
-export default function TimeTable() {
+interface TimeTableProps {
+  onClose?: () => void
+}
+
+export default function TimeTable({ onClose }: TimeTableProps) {
   const store = useReservationStore()
   const { reservations, activeSession, focusedTableId, setFocusedTable } = store
   const tables = store.getEffectiveTables()
@@ -94,11 +98,22 @@ export default function TimeTable() {
   }, [times])
 
   return (
-    <aside className="w-[320px] min-w-[320px] h-full bg-surface border-l border-border flex flex-col">
+    <aside className="w-[320px] min-w-[320px] h-full bg-surface border-l border-border flex flex-col shadow-xl">
       {/* 헤더 */}
-      <div className="px-3 py-2.5 border-b border-border flex items-center gap-2">
-        <Clock size={14} className="text-primary" />
-        <h2 className="text-[13px] font-bold text-charcoal">예약시간대</h2>
+      <div className="px-3 py-2.5 border-b border-border flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Clock size={14} className="text-primary" />
+          <h2 className="text-[13px] font-bold text-charcoal">예약시간대</h2>
+        </div>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="inline-flex items-center justify-center w-6 h-6 rounded-md text-charcoal-lighter hover:text-charcoal hover:bg-cream transition-colors"
+            title="닫기"
+          >
+            <X size={13} />
+          </button>
+        )}
       </div>
 
       {/* Gantt per-table bars */}

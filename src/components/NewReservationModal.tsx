@@ -2,10 +2,28 @@ import { useState, useCallback, useEffect } from 'react'
 import { X, UserPlus, Clock, Users, Phone, MessageSquare, Minus, Plus, Sun, Moon } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useReservationStore } from '@/store/useReservationStore'
+import type { Reservation } from '@/data/dummy'
 import { getStartTimeOptions, getFixedEndTime, formatFrenchPhone } from '@/data/dummy'
 
+function toMinutes(time: string): number {
+  const [h, m] = time.split(':').map(Number)
+  return h * 60 + m
+}
+
+function timesOverlap(startA: string, endA: string, startB: string, endB: string): boolean {
+  return toMinutes(startA) < toMinutes(endB) && toMinutes(startB) < toMinutes(endA)
+}
+
+function normalizePhone(raw: string): string {
+  return raw.replace(/\D/g, '')
+}
+
+function normalizeName(raw: string): string {
+  return raw.trim().toLowerCase()
+}
+
 export default function NewReservationModal() {
-  const { isModalOpen, closeModal, addReservation, editingReservation, updateReservation } = useReservationStore()
+  const { isModalOpen, closeModal, addReservation, editingReservation, updateReservation, reservations, openModal } = useReservationStore()
 
   const [name, setName] = useState('')
   const [partySize, setPartySize] = useState(2)
@@ -14,6 +32,8 @@ export default function NewReservationModal() {
   const [endTime, setEndTime] = useState('')
   const [phone, setPhone] = useState('')
   const [note, setNote] = useState('')
+  const [duplicateCandidates, setDuplicateCandidates] = useState<Reservation[]>([])
+  const [liveDuplicateCandidates, setLiveDuplicateCandidates] = useState<Reservation[]>([])
 
   const isEditing = !!editingReservation
 
@@ -64,15 +84,56 @@ export default function NewReservationModal() {
     setEndTime('')
     setPhone('')
     setNote('')
+    setDuplicateCandidates([])
+    setLiveDuplicateCandidates([])
   }, [])
+
+  const findDuplicateReservations = (): Reservation[] => {
+    if (!startTime || !endTime) return []
+
+    const inputName = normalizeName(name)
+    const inputPhone = normalizePhone(phone)
+
+    return reservations.filter((r) => {
+      if (editingReservation && r.id === editingReservation.id) return false
+      if (r.period !== period) return false
+      if (!timesOverlap(startTime, endTime, r.startTime, r.endTime)) return false
+
+      const samePhone = !!inputPhone && inputPhone.length >= 8 && normalizePhone(r.phone) === inputPhone
+      const sameName = inputName.length > 0 && normalizeName(r.name) === inputName
+      return samePhone || sameName
+    })
+  }
+
+  useEffect(() => {
+    const hasMinimumInput = name.trim().length > 0 && !!startTime && !!endTime
+    if (!hasMinimumInput) {
+      setLiveDuplicateCandidates([])
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      setLiveDuplicateCandidates(findDuplicateReservations())
+    }, 180)
+
+    return () => window.clearTimeout(timer)
+  }, [name, phone, partySize, period, startTime, endTime, reservations, editingReservation])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim() || !partySize || !startTime || !endTime) return
 
+    if (!isEditing) {
+      const duplicates = findDuplicateReservations()
+      if (duplicates.length > 0) {
+        setDuplicateCandidates(duplicates)
+        return
+      }
+    }
+
     if (isEditing && editingReservation) {
       updateReservation(editingReservation.id, {
-        name: name.trim(),
+        name: name.trim().toUpperCase(),
         partySize,
         period,
         startTime,
@@ -82,7 +143,7 @@ export default function NewReservationModal() {
       })
     } else {
       addReservation({
-        name: name.trim(),
+        name: name.trim().toUpperCase(),
         partySize,
         period,
         startTime,
@@ -102,7 +163,7 @@ export default function NewReservationModal() {
   if (!isModalOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center">
       {/* 오버레이 */}
       <div
         className="absolute inset-0 bg-charcoal/30 backdrop-blur-sm"
@@ -146,6 +207,47 @@ export default function NewReservationModal() {
 
         {/* 폼 */}
         <form onSubmit={handleSubmit} className="px-6 pb-6">
+          {duplicateCandidates.length > 0 && (
+            <div className="mb-4 rounded-xl border border-occupied/30 bg-occupied/10 px-3 py-2.5">
+              <p className="text-xs font-semibold text-occupied">중복 예약 가능성이 있습니다.</p>
+              <p className="mt-0.5 text-[11px] text-charcoal-light">
+                같은 시간대에 동일 인물로 보이는 예약이 있어요. 예약 취소 또는 기존 예약 변경을 선택해주세요.
+              </p>
+              <div className="mt-2 space-y-1.5">
+                {duplicateCandidates.map((candidate) => (
+                  <button
+                    key={candidate.id}
+                    type="button"
+                    onClick={() => {
+                      setDuplicateCandidates([])
+                      openModal(candidate)
+                    }}
+                    className={cn(
+                      'w-full text-left rounded-lg px-2.5 py-1.5',
+                      'bg-surface border border-border hover:border-primary/40 hover:bg-primary/5',
+                      'transition-colors'
+                    )}
+                  >
+                    <span className="text-[11px] font-medium text-charcoal">{candidate.name}</span>
+                    <span className="ml-1 text-[10px] text-charcoal-lighter">
+                      ({candidate.partySize}명 · {candidate.startTime}~{candidate.endTime})
+                    </span>
+                    <span className="ml-1 text-[10px] text-primary">예약 변경</span>
+                  </button>
+                ))}
+              </div>
+              <div className="mt-2 flex items-center justify-end">
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  className="text-[11px] font-medium text-occupied hover:text-occupied/80 transition-colors"
+                >
+                  예약 취소
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="space-y-4">
             {/* 이름 */}
             <div>
@@ -156,7 +258,10 @@ export default function NewReservationModal() {
               <input
                 type="text"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  setName(e.target.value.toUpperCase())
+                  if (duplicateCandidates.length > 0) setDuplicateCandidates([])
+                }}
                 placeholder="이름을 입력하세요"
                 className={cn(
                   'w-full px-4 py-2.5 rounded-xl',
@@ -178,7 +283,10 @@ export default function NewReservationModal() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setPartySize(Math.max(1, partySize - 1))}
+                  onClick={() => {
+                    setPartySize(Math.max(1, partySize - 1))
+                    if (duplicateCandidates.length > 0) setDuplicateCandidates([])
+                  }}
                   className={cn(
                     'w-11 h-11 flex items-center justify-center rounded-xl',
                     'bg-cream border border-border',
@@ -194,7 +302,10 @@ export default function NewReservationModal() {
                 </span>
                 <button
                   type="button"
-                  onClick={() => setPartySize(Math.min(20, partySize + 1))}
+                  onClick={() => {
+                    setPartySize(Math.min(20, partySize + 1))
+                    if (duplicateCandidates.length > 0) setDuplicateCandidates([])
+                  }}
                   className={cn(
                     'w-11 h-11 flex items-center justify-center rounded-xl',
                     'bg-cream border border-border',
@@ -217,7 +328,10 @@ export default function NewReservationModal() {
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => handlePeriodChange('lunch')}
+                  onClick={() => {
+                    handlePeriodChange('lunch')
+                    if (duplicateCandidates.length > 0) setDuplicateCandidates([])
+                  }}
                   className={cn(
                     'flex-1 inline-flex items-center justify-center gap-2',
                     'py-2.5 rounded-xl text-sm font-medium',
@@ -232,7 +346,10 @@ export default function NewReservationModal() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => handlePeriodChange('dinner')}
+                  onClick={() => {
+                    handlePeriodChange('dinner')
+                    if (duplicateCandidates.length > 0) setDuplicateCandidates([])
+                  }}
                   className={cn(
                     'flex-1 inline-flex items-center justify-center gap-2',
                     'py-2.5 rounded-xl text-sm font-medium',
@@ -254,35 +371,48 @@ export default function NewReservationModal() {
                 시작 시간 <span className="text-occupied">*</span>
                 <span className="text-charcoal-lighter ml-1">(1시간 30분 자동 배정)</span>
               </label>
-              <div className="flex items-center gap-2">
-                <select
-                  value={startTime}
-                  onChange={(e) => handleStartTimeChange(e.target.value)}
-                  className={cn(
-                    'flex-1 px-4 py-2.5 rounded-xl appearance-none',
-                    'bg-cream border border-border',
-                    'text-sm text-charcoal',
-                    !startTime && 'text-charcoal-lighter',
-                    'focus:outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10',
-                    'transition-all'
-                  )}
-                >
-                  <option value="">시작 시간</option>
+              <div className="rounded-xl border border-border bg-cream p-2">
+                <div className="grid grid-cols-4 gap-1.5 max-h-[128px] overflow-y-auto pr-1">
                   {startTimeOptions.map((val) => (
-                    <option key={val} value={val}>{val}</option>
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => {
+                        handleStartTimeChange(val)
+                        if (duplicateCandidates.length > 0) setDuplicateCandidates([])
+                      }}
+                      className={cn(
+                        'py-1.5 rounded-lg text-[11px] font-semibold border transition-colors',
+                        startTime === val
+                          ? 'bg-primary text-white border-primary'
+                          : 'bg-surface text-charcoal border-border hover:bg-border'
+                      )}
+                    >
+                      {val}
+                    </button>
                   ))}
-                </select>
-                <span className="text-charcoal-lighter text-sm">~</span>
-                <div className={cn(
-                  'flex-1 px-4 py-2.5 rounded-xl',
-                  'bg-cream/50 border border-border',
-                  'text-sm',
-                  endTime ? 'text-charcoal font-medium' : 'text-charcoal-lighter'
-                )}>
-                  {endTime || '종료 시간'}
+                </div>
+                <div className="mt-2 pt-2 border-t border-border text-[11px] text-charcoal-light">
+                  종료 시간:
+                  <span className={cn('ml-1 font-semibold', endTime ? 'text-charcoal' : 'text-charcoal-lighter')}>
+                    {endTime || '-'}
+                  </span>
                 </div>
               </div>
             </div>
+
+            {liveDuplicateCandidates.length > 0 && !isEditing && (
+              <div className="rounded-xl border border-primary/25 bg-primary/5 px-3 py-2">
+                <p className="text-[11px] font-semibold text-primary">실시간 중복 후보</p>
+                <div className="mt-1.5 space-y-1">
+                  {liveDuplicateCandidates.map((candidate) => (
+                    <div key={`live-${candidate.id}`} className="text-[11px] text-charcoal">
+                      {candidate.name} ({candidate.partySize}명 · {candidate.startTime}~{candidate.endTime})
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* 전화번호 - 프랑스 포맷 */}
             <div>
@@ -293,7 +423,10 @@ export default function NewReservationModal() {
               <input
                 type="tel"
                 value={phone}
-                onChange={(e) => handlePhoneChange(e.target.value)}
+                onChange={(e) => {
+                  handlePhoneChange(e.target.value)
+                  if (duplicateCandidates.length > 0) setDuplicateCandidates([])
+                }}
                 placeholder="06 12 34 56 78"
                 className={cn(
                   'w-full px-4 py-2.5 rounded-xl',
@@ -313,7 +446,10 @@ export default function NewReservationModal() {
               </label>
               <textarea
                 value={note}
-                onChange={(e) => setNote(e.target.value)}
+                onChange={(e) => {
+                  setNote(e.target.value)
+                  if (duplicateCandidates.length > 0) setDuplicateCandidates([])
+                }}
                 placeholder="특이사항이 있으면 입력하세요"
                 rows={2}
                 className={cn(

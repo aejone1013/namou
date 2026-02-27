@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import { Plus, Coffee, Clock, Users, CheckCircle } from 'lucide-react'
+import { Plus, Clock, Users, CheckCircle } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useReservationStore } from '@/store/useReservationStore'
-import DraggableReservationCard from './DraggableReservationCard'
 import ReservationCard from './ReservationCard'
 
 type TabType = 'waiting' | 'seated' | 'completed'
+type WaitingPreset = 'all' | 'soon' | 'assigned' | 'unassigned'
 
 const tabConfig: { key: TabType; label: string; icon: typeof Clock }[] = [
   { key: 'waiting', label: '대기', icon: Clock },
@@ -14,8 +14,10 @@ const tabConfig: { key: TabType; label: string; icon: typeof Clock }[] = [
 ]
 
 export default function Sidebar() {
-  const { reservations, openModal, activeSession } = useReservationStore()
+  const logoSrc = '/namou.jpg'
+  const { reservations, openModal, activeSession, sessionData } = useReservationStore()
   const [activeTab, setActiveTab] = useState<TabType>('waiting')
+  const [waitingPreset, setWaitingPreset] = useState<WaitingPreset>('all')
 
   // Filter by current session
   const sessionReservations = reservations.filter((r) => r.period === activeSession)
@@ -30,16 +32,43 @@ export default function Sidebar() {
     completed: completedCount,
   }
 
+  const assignedWaitingReservationIds = new Set(
+    Object.values(sessionData[activeSession].tableStates)
+      .flatMap((ts) => ts.plannedBookings ?? (ts.nextBooking ? [ts.nextBooking] : []))
+      .map((b) => b.reservationId)
+  )
+
+  const now = new Date()
+  const nowMinutes = now.getHours() * 60 + now.getMinutes()
+  const toMinutes = (time: string) => {
+    const [h, m] = time.split(':').map(Number)
+    return h * 60 + m
+  }
+
   const filteredReservations = sessionReservations
     .filter((r) => r.status === activeTab)
+    .filter((r) => {
+      if (activeTab !== 'waiting') return true
+      if (waitingPreset === 'all') return true
+      if (waitingPreset === 'assigned') return assignedWaitingReservationIds.has(r.id)
+      if (waitingPreset === 'unassigned') return !assignedWaitingReservationIds.has(r.id)
+      if (waitingPreset === 'soon') {
+        const diff = toMinutes(r.startTime) - nowMinutes
+        return diff >= 0 && diff <= 30
+      }
+      return true
+    })
     .sort((a, b) => a.startTime.localeCompare(b.startTime))
 
-  const renderReservation = (reservation: typeof reservations[0]) =>
-    activeTab === 'waiting' ? (
-      <DraggableReservationCard key={reservation.id} reservation={reservation} />
-    ) : (
-      <ReservationCard key={reservation.id} reservation={reservation} />
-    )
+  const soonCount = sessionReservations.filter((r) => {
+    if (r.status !== 'waiting') return false
+    const diff = toMinutes(r.startTime) - nowMinutes
+    return diff >= 0 && diff <= 30
+  }).length
+
+  const renderReservation = (reservation: typeof reservations[0]) => (
+    <ReservationCard key={reservation.id} reservation={reservation} />
+  )
 
   return (
     <aside className="w-[280px] min-w-[280px] h-full bg-surface border-r border-border flex flex-col">
@@ -47,8 +76,14 @@ export default function Sidebar() {
       <div className="p-4 pb-3">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 bg-primary/10 rounded-xl flex items-center justify-center">
-              <Coffee size={16} className="text-primary" />
+            <div className="w-8 h-8 rounded-xl overflow-hidden border border-border bg-surface shadow-sm">
+              <img
+                src={logoSrc}
+                alt="namou logo"
+                className="w-full h-full object-cover"
+                draggable={false}
+                onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/namou.jpg' }}
+              />
             </div>
             <h1 className="text-base font-bold text-charcoal tracking-tight">namou</h1>
           </div>
@@ -56,9 +91,9 @@ export default function Sidebar() {
             onClick={() => openModal()}
             className={cn(
               'inline-flex items-center gap-1',
-              'text-xs font-medium text-primary',
+              'text-sm font-semibold text-primary',
               'bg-primary/10 hover:bg-primary/20',
-              'px-2.5 py-1 rounded-lg',
+              'px-3 py-2 rounded-lg',
               'transition-colors duration-150'
             )}
           >
@@ -78,7 +113,7 @@ export default function Sidebar() {
                 onClick={() => setActiveTab(tab.key)}
                 className={cn(
                   'flex-1 inline-flex items-center justify-center gap-1',
-                  'text-[11px] font-medium py-1.5 rounded-md',
+                  'text-[13px] font-semibold py-2 rounded-md',
                   'transition-all duration-150',
                   isActive
                     ? 'bg-surface text-charcoal shadow-sm'
@@ -89,8 +124,8 @@ export default function Sidebar() {
                 <span
                   className={cn(
                     'inline-flex items-center justify-center',
-                    'min-w-[16px] h-[16px] px-0.5',
-                    'text-[9px] font-bold rounded-full',
+                    'min-w-[18px] h-[18px] px-0.5',
+                    'text-[10px] font-bold rounded-full',
                     isActive ? 'bg-primary text-white' : 'bg-border text-charcoal-lighter'
                   )}
                 >
@@ -100,13 +135,57 @@ export default function Sidebar() {
             )
           })}
         </div>
+
+        {activeTab === 'waiting' && (
+          <div className="mt-2 grid grid-cols-4 gap-1">
+            {([
+              { key: 'all', label: '전체' },
+              { key: 'soon', label: '곧 시작' },
+              { key: 'assigned', label: '배정완료' },
+              { key: 'unassigned', label: '미배정' },
+            ] as Array<{ key: WaitingPreset; label: string }>).map((preset) => (
+              <button
+                key={preset.key}
+                onClick={() => setWaitingPreset(preset.key)}
+                className={cn(
+                  'text-[12px] font-semibold py-1.5 rounded-md border transition-colors',
+                  waitingPreset === preset.key
+                    ? 'bg-surface border-primary/30 text-primary'
+                    : 'bg-cream border-border text-charcoal-lighter hover:text-charcoal hover:bg-border'
+                )}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {activeTab === 'waiting' && soonCount > 0 && (
+          <button
+            onClick={() => {
+              setActiveTab('waiting')
+              setWaitingPreset('soon')
+            }}
+            className="mt-2 w-full text-left px-3 py-2 rounded-xl border border-occupied/30 bg-occupied-light text-occupied text-[13px] font-semibold"
+          >
+            30분 내 시작 예약 {soonCount}건
+          </button>
+        )}
       </div>
 
       {/* Reservation List */}
       <div className="flex-1 overflow-y-auto px-4 pb-4">
         {filteredReservations.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-10 text-charcoal-lighter">
-            <Coffee size={28} className="mb-2 opacity-30" />
+            <div className="w-7 h-7 rounded-lg overflow-hidden border border-border bg-surface/70 mb-2 opacity-80">
+              <img
+                src={logoSrc}
+                alt=""
+                className="w-full h-full object-cover"
+                draggable={false}
+                onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/namou.jpg' }}
+              />
+            </div>
             <p className="text-xs">
               {activeTab === 'waiting' && '대기 중인 예약이 없습니다'}
               {activeTab === 'seated' && '착석 중인 팀이 없습니다'}

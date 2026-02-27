@@ -10,6 +10,7 @@ interface AvailableTableActionsProps {
   walkInSize: number
   setWalkInSize: (v: number) => void
   waitingReservations: Reservation[]
+  hideEmptyWaitingMessage?: boolean
   onSeatReservation: (reservationId: string) => void
   onWalkIn: () => void
 }
@@ -23,6 +24,7 @@ export default function AvailableTableActions({
   walkInSize,
   setWalkInSize,
   waitingReservations,
+  hideEmptyWaitingMessage = false,
   onSeatReservation,
   onWalkIn,
 }: AvailableTableActionsProps) {
@@ -101,7 +103,7 @@ export default function AvailableTableActions({
         </div>
       )}
 
-      {waitingReservations.length === 0 && !showWalkIn && (
+      {waitingReservations.length === 0 && !showWalkIn && !hideEmptyWaitingMessage && (
         <div className="flex items-center gap-1.5 text-[11px] text-charcoal-lighter py-1">
           <Info size={12} />
           대기 중인 예약이 없습니다

@@ -3,12 +3,13 @@ import { persist } from 'zustand/middleware'
 import { planAdjacentMerge } from './mergePlanner'
 import { decideNextBookingOnBaseTableClear } from './clearTablePolicies'
 import { canMovePartyToTable } from './movePolicies'
-import type { Reservation, TableInfo, CurrentTeam, MergedOrigin, SessionData, MergeInfo, TableSessionState } from '@/data/dummy'
+import { bookingConflictsOnSameTable, bookingScopesOverlap, mergeFuturePlannedBookingsForMergedSeat, selectSimultaneousScopedAutoSeatBookings } from './plannedBookingPolicies'
+import type { Reservation, TableInfo, CurrentTeam, MergedOrigin, SessionData, MergeInfo, TableSessionState, NextBooking } from '@/data/dummy'
 import {
   TABLE_WIDTH, SNAP_SIZE, snapToGrid, getCurrentTimeHHMM,
-  getTableNumber, isContiguousRange, getMergeLabel, getMergedTableHeight,
+  getTableNumber, isContiguousRange, getMergeLabel, getMergedTableHeight, compareTableLabel,
   TABLE_BASE_HEIGHT, TABLE_FIXED_SEATS, TABLES_PER_COLUMN,
-  getMergeGroup, createDefaultTables,
+  getMergeGroup, createDefaultTables, timeToMinutes,
 } from '@/data/dummy'
 
 const CANVAS_SIZE = TABLES_PER_COLUMN * TABLE_BASE_HEIGHT  // 648
@@ -37,6 +38,11 @@ interface ReservationStore {
   // Undo (non-persisted)
   _undoSnapshot: { reservations: Reservation[]; tables: TableInfo[]; sessionData: { lunch: SessionData; dinner: SessionData } } | null
   _undoLabel: string | null
+  _undoStack: Array<{
+    label: string
+    snapshot: { reservations: Reservation[]; tables: TableInfo[]; sessionData: { lunch: SessionData; dinner: SessionData } }
+    createdAt: number
+  }>
   saveUndoSnapshot: (label: string) => void
   undo: () => void
 
@@ -62,7 +68,9 @@ interface ReservationStore {
   walkInTable: (tableId: string, partySize: number, name?: string) => void
   moveToTable: (fromTableId: string, toTableId: string) => void
   setNextBooking: (tableId: string, reservationId: string) => void
+  setNextBookingMulti: (tableIds: string[], reservationId: string, targetLabel?: string) => void
   clearNextBooking: (tableId: string) => void
+  clearNextBookingByReservation: (reservationId: string) => void
   setNextBookingTargetLabel: (tableId: string, label?: string) => void
   setFocusedTable: (id: string | null) => void
   setMergePreviewTableIds: (ids: string[]) => void
@@ -124,6 +132,24 @@ function allUsedIds(tables: TableInfo[], sessionData: { lunch: SessionData; dinn
   ]
 }
 
+function getPlannedBookings(ts?: TableSessionState | null): NextBooking[] {
+  if (!ts) return []
+  if (Array.isArray(ts.plannedBookings)) {
+    return [...ts.plannedBookings].sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
+  }
+  return ts.nextBooking ? [ts.nextBooking] : []
+}
+
+function setPlannedBookings(ts: TableSessionState | undefined, planned: NextBooking[]): TableSessionState {
+  const sorted = [...planned].sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
+  return {
+    status: ts?.status ?? 'available',
+    currentTeam: ts?.currentTeam ?? null,
+    nextBooking: sorted[0] ?? null,
+    plannedBookings: sorted,
+  }
+}
+
 export const useReservationStore = create<ReservationStore>()(
   persist(
     (set, get) => ({
@@ -140,24 +166,36 @@ export const useReservationStore = create<ReservationStore>()(
       activeSession: 'lunch',
       _undoSnapshot: null,
       _undoLabel: null,
+      _undoStack: [],
 
       saveUndoSnapshot: (label) => {
         const { reservations, tables, sessionData } = get()
+        const snapshot = JSON.parse(JSON.stringify({ reservations, tables, sessionData }))
         set({
-          _undoSnapshot: JSON.parse(JSON.stringify({ reservations, tables, sessionData })),
+          _undoSnapshot: snapshot,
           _undoLabel: label,
+          _undoStack: [
+            ...get()._undoStack,
+            {
+              label,
+              snapshot,
+              createdAt: Date.now(),
+            },
+          ].slice(-10),
         })
       },
 
       undo: () => {
-        const snapshot = get()._undoSnapshot
-        if (!snapshot) return
+        const stack = get()._undoStack
+        const last = stack[stack.length - 1]
+        if (!last) return
         set({
-          reservations: snapshot.reservations,
-          tables: snapshot.tables,
-          sessionData: snapshot.sessionData,
-          _undoSnapshot: null,
-          _undoLabel: null,
+          reservations: last.snapshot.reservations,
+          tables: last.snapshot.tables,
+          sessionData: last.snapshot.sessionData,
+          _undoSnapshot: stack.length > 1 ? stack[stack.length - 2].snapshot : null,
+          _undoLabel: stack.length > 1 ? stack[stack.length - 2].label : null,
+          _undoStack: stack.slice(0, -1),
         })
       },
 
@@ -374,11 +412,10 @@ export const useReservationStore = create<ReservationStore>()(
               partySize: reservation.partySize,
               seatedAt: getCurrentTimeHHMM(),
             },
-            nextBooking:
-              sd.tableStates[tableId]?.nextBooking?.reservationId === reservationId
-                ? null
-                : sd.tableStates[tableId]?.nextBooking ?? null,
+            nextBooking: null,
           }
+          const preservedPlanned = getPlannedBookings(sd.tableStates[tableId]).filter((b) => b.reservationId !== reservationId)
+          newTableStates[tableId] = setPlannedBookings(newTableStates[tableId], preservedPlanned)
 
           return {
             reservations: state.reservations.map((r) =>
@@ -418,11 +455,10 @@ export const useReservationStore = create<ReservationStore>()(
                 partySize: reservation.partySize,
                 seatedAt: getCurrentTimeHHMM(),
               },
-              nextBooking:
-                sd2.tableStates[targetTableId]?.nextBooking?.reservationId === reservationId
-                  ? null
-                  : sd2.tableStates[targetTableId]?.nextBooking ?? null,
+              nextBooking: null,
             }
+            const preservedPlanned = getPlannedBookings(sd2.tableStates[targetTableId]).filter((b) => b.reservationId !== reservationId)
+            newTableStates[targetTableId] = setPlannedBookings(newTableStates[targetTableId], preservedPlanned)
             return {
               reservations: s.reservations.map((r) =>
                 r.id === reservationId ? { ...r, status: 'seated', tableId: targetTableId } : r
@@ -496,6 +532,11 @@ export const useReservationStore = create<ReservationStore>()(
           }
 
           const newTableStates = { ...sd2.tableStates }
+          const preservedPlanned = mergeFuturePlannedBookingsForMergedSeat(
+            Object.fromEntries(allToMerge.map((t) => [t.id, getPlannedBookings(newTableStates[t.id])])),
+            allToMerge.map((t) => t.id),
+            reservationId
+          )
           newTableStates[mergedId] = {
             status: 'occupied' as const,
             currentTeam: {
@@ -506,6 +547,7 @@ export const useReservationStore = create<ReservationStore>()(
             },
             nextBooking: null,
           }
+          newTableStates[mergedId] = setPlannedBookings(newTableStates[mergedId], preservedPlanned)
 
           return {
             reservations: s.reservations.map((r) =>
@@ -575,6 +617,11 @@ export const useReservationStore = create<ReservationStore>()(
           }
 
           const newTableStates = { ...sd2.tableStates }
+          const preservedPlanned = mergeFuturePlannedBookingsForMergedSeat(
+            Object.fromEntries(allToMerge.map((t) => [t.id, getPlannedBookings(newTableStates[t.id])])),
+            allToMerge.map((t) => t.id),
+            reservationId
+          )
           for (const t of allToMerge) delete newTableStates[t.id]
           newTableStates[mergedId] = {
             status: 'occupied' as const,
@@ -586,6 +633,7 @@ export const useReservationStore = create<ReservationStore>()(
             },
             nextBooking: null,
           }
+          newTableStates[mergedId] = setPlannedBookings(newTableStates[mergedId], preservedPlanned)
 
           return {
             reservations: s.reservations.map((r) =>
@@ -616,6 +664,23 @@ export const useReservationStore = create<ReservationStore>()(
             : state.reservations
 
           const merge = sd.merges.find((m) => m.mergedId === tableId)
+          const sourcePlanned = (() => {
+            if (!merge) return getPlannedBookings(tableState)
+            const bookingsByTableId: Record<string, NextBooking[]> = {}
+            for (const origin of merge.mergedFrom) {
+              bookingsByTableId[origin.id] = getPlannedBookings(sd.tableStates[origin.id])
+            }
+            bookingsByTableId[tableId] = getPlannedBookings(tableState)
+            return mergeFuturePlannedBookingsForMergedSeat(
+              bookingsByTableId,
+              [...merge.mergedFrom.map((o) => o.id), tableId],
+              reservationId
+            )
+          })()
+          const displayedNext = sourcePlanned[0] ?? tableState?.nextBooking ?? null
+          const remainingPlanned = displayedNext
+            ? sourcePlanned.filter((b) => b.reservationId !== displayedNext.reservationId)
+            : sourcePlanned
 
           if (merge) {
             // Auto-split
@@ -624,10 +689,11 @@ export const useReservationStore = create<ReservationStore>()(
             delete newTableStates[tableId]
 
             for (const origin of merge.mergedFrom) {
-              newTableStates[origin.id] = { status: 'available', currentTeam: null, nextBooking: null }
+              const preserved = sd.tableStates[origin.id]?.nextBooking ?? null
+              newTableStates[origin.id] = { status: 'available', currentTeam: null, nextBooking: preserved }
             }
 
-            const nb = tableState?.nextBooking
+            const nb = displayedNext
             if (nb) {
               const nbReservation = state.reservations.find((r) => r.id === nb.reservationId)
               if (nbReservation) {
@@ -635,6 +701,127 @@ export const useReservationStore = create<ReservationStore>()(
                   id: o.id, label: o.label, seats: o.seats,
                   x: o.x, y: o.y, width: o.width, height: o.height,
                 }))
+
+                // If multiple planned bookings start at the same earliest time and have explicit, disjoint scopes
+                // (e.g. B:T1-2 and C:T3), auto-seat them together on split.
+                const sameStart = selectSimultaneousScopedAutoSeatBookings(
+                  sourcePlanned,
+                  restoredInfos.map((t) => t.id)
+                )
+                if (sameStart.length >= 2) {
+                  const resolved = sameStart.map((booking) => {
+                    const reservation = state.reservations.find((r) => r.id === booking.reservationId)
+                    const scopeIds = booking.scopeTableIds
+                    return { booking, reservation, scopeIds }
+                  })
+
+                  const hasValidScopes = resolved.every((r) => !!r.reservation && r.scopeIds.length >= 1)
+                  const disjointScopes = resolved.every((r, i) =>
+                    resolved.every((other, j) => i === j || !bookingScopesOverlap(r.scopeIds, other.scopeIds))
+                  )
+
+                  if (hasValidScopes && disjointScopes) {
+                    const bookedIds = new Set<string>()
+                    const selectedReservationIds = new Set(resolved.map((r) => r.booking.reservationId))
+                    const nextReservations = [...updatedReservations]
+                    let nextMerges = [...newMerges]
+
+                    const getLaterForScope = (scopeIds: string[]) =>
+                      sourcePlanned.filter((b) => {
+                        if (selectedReservationIds.has(b.reservationId)) return false
+                        const bScope = b.scopeTableIds ?? []
+                        if (bScope.length === 0) return false
+                        return bookingScopesOverlap(scopeIds, bScope)
+                      })
+
+                    for (const { booking, reservation, scopeIds } of resolved.sort((a, b) => b.scopeIds.length - a.scopeIds.length)) {
+                      if (!reservation || scopeIds.some((id) => bookedIds.has(id))) continue
+                      const scopedInfos = restoredInfos
+                        .filter((t) => scopeIds.includes(t.id))
+                        .sort((a, b) => compareTableLabel(a.label, b.label))
+                      const nums = scopedInfos.map((t) => getTableNumber(t.label))
+                      const totalScopedSeats = scopedInfos.reduce((sum, t) => sum + t.seats, 0)
+                      if (totalScopedSeats < booking.partySize) continue
+
+                      if (scopedInfos.length >= 2 && isContiguousRange(nums)) {
+                        const mergedSeatId = getNextId(
+                          [...state.tables, ...nextMerges.map((m) => ({ id: m.mergedId }))],
+                          't'
+                        )
+                        const first = scopedInfos[0]
+                        const minScopedY = Math.min(...scopedInfos.map((t) => t.y))
+                        const laterPlannedForScope = getLaterForScope(scopeIds)
+                        for (const t of scopedInfos) delete newTableStates[t.id]
+                        newTableStates[mergedSeatId] = setPlannedBookings({
+                          status: 'occupied',
+                          currentTeam: {
+                            reservationId: booking.reservationId,
+                            name: booking.name,
+                            partySize: booking.partySize,
+                            seatedAt: getCurrentTimeHHMM(),
+                          },
+                          nextBooking: null,
+                        }, laterPlannedForScope)
+                        nextMerges.push({
+                          mergedId: mergedSeatId,
+                          mergedFrom: scopedInfos.map((t) => ({ ...t })),
+                          label: getMergeLabel(nums),
+                          seats: totalScopedSeats,
+                          x: first.x,
+                          y: minScopedY,
+                          width: TABLE_WIDTH,
+                          height: getMergedTableHeight(scopedInfos.length),
+                        })
+                        for (const id of scopeIds) bookedIds.add(id)
+                        const idx = nextReservations.findIndex((r) => r.id === booking.reservationId)
+                        if (idx >= 0) nextReservations[idx] = { ...nextReservations[idx], status: 'seated', tableId: mergedSeatId }
+                        continue
+                      }
+
+                      if (scopedInfos.length === 1) {
+                        const target = scopedInfos[0]
+                        const laterPlannedForScope = getLaterForScope(scopeIds)
+                        newTableStates[target.id] = setPlannedBookings({
+                          status: 'occupied',
+                          currentTeam: {
+                            reservationId: booking.reservationId,
+                            name: booking.name,
+                            partySize: booking.partySize,
+                            seatedAt: getCurrentTimeHHMM(),
+                          },
+                          nextBooking: null,
+                        }, laterPlannedForScope)
+                        bookedIds.add(target.id)
+                        const idx = nextReservations.findIndex((r) => r.id === booking.reservationId)
+                        if (idx >= 0) nextReservations[idx] = { ...nextReservations[idx], status: 'seated', tableId: target.id }
+                      }
+                    }
+
+                    if (bookedIds.size > 0) {
+                      // Keep remaining unused restored tables available; preserve later scoped bookings on each table.
+                      for (const origin of restoredInfos) {
+                        if (bookedIds.has(origin.id)) continue
+                        const later = sourcePlanned.filter((b) => {
+                          if (selectedReservationIds.has(b.reservationId)) return false
+                          const bScope = b.scopeTableIds ?? []
+                          return bScope.includes(origin.id)
+                        })
+                        newTableStates[origin.id] = setPlannedBookings(
+                          { status: 'available', currentTeam: null, nextBooking: null },
+                          later
+                        )
+                      }
+
+                      return {
+                        reservations: nextReservations,
+                        sessionData: {
+                          ...state.sessionData,
+                          [session]: { tableStates: newTableStates, merges: nextMerges },
+                        },
+                      }
+                    }
+                  }
+                }
 
                 // Assign to specific sub-table
                 if (nb.targetLabel) {
@@ -649,7 +836,9 @@ export const useReservationStore = create<ReservationStore>()(
                         seatedAt: getCurrentTimeHHMM(),
                       },
                       nextBooking: null,
+                      plannedBookings: remainingPlanned,
                     }
+                    newTableStates[target.id] = setPlannedBookings(newTableStates[target.id], remainingPlanned)
                     return {
                       reservations: updatedReservations.map((r) =>
                         r.id === nb.reservationId ? { ...r, status: 'seated' as const, tableId: target.id } : r
@@ -718,7 +907,9 @@ export const useReservationStore = create<ReservationStore>()(
                       seatedAt: getCurrentTimeHHMM(),
                     },
                     nextBooking: null,
+                    plannedBookings: remainingPlanned,
                   }
+                  newTableStates[reMergedId] = setPlannedBookings(newTableStates[reMergedId], remainingPlanned)
 
                   return {
                     reservations: updatedReservations.map((r) =>
@@ -743,7 +934,9 @@ export const useReservationStore = create<ReservationStore>()(
                         seatedAt: getCurrentTimeHHMM(),
                       },
                       nextBooking: null,
+                      plannedBookings: remainingPlanned,
                     }
+                    newTableStates[target.id] = setPlannedBookings(newTableStates[target.id], remainingPlanned)
                     return {
                       reservations: updatedReservations.map((r) =>
                         r.id === nb.reservationId ? { ...r, status: 'seated' as const, tableId: target.id } : r
@@ -769,7 +962,7 @@ export const useReservationStore = create<ReservationStore>()(
 
           // Non-merged table
           const newTableStates = { ...sd.tableStates }
-          const nb = tableState?.nextBooking
+          const nb = displayedNext
 
           if (nb) {
             const nbReservation = state.reservations.find((r) => r.id === nb.reservationId)
@@ -778,11 +971,10 @@ export const useReservationStore = create<ReservationStore>()(
               const baseSeats = baseTable?.seats ?? 0
               if (decideNextBookingOnBaseTableClear(baseSeats, nb.partySize) === 'keep-next-booking') {
                 // Keep the next booking on the table and let the operator choose a merge target.
-                newTableStates[tableId] = {
-                  status: 'available',
-                  currentTeam: null,
-                  nextBooking: nb,
-                }
+                newTableStates[tableId] = setPlannedBookings(
+                  { status: 'available', currentTeam: null, nextBooking: null },
+                  sourcePlanned
+                )
                 return {
                   reservations: updatedReservations,
                   sessionData: {
@@ -801,7 +993,9 @@ export const useReservationStore = create<ReservationStore>()(
                   seatedAt: getCurrentTimeHHMM(),
                 },
                 nextBooking: null,
+                plannedBookings: remainingPlanned,
               }
+              newTableStates[tableId] = setPlannedBookings(newTableStates[tableId], remainingPlanned)
               return {
                 reservations: updatedReservations.map((r) =>
                   r.id === nb.reservationId ? { ...r, status: 'seated' as const, tableId } : r
@@ -814,7 +1008,10 @@ export const useReservationStore = create<ReservationStore>()(
             }
           }
 
-          newTableStates[tableId] = { status: 'available', currentTeam: null, nextBooking: null }
+          newTableStates[tableId] = setPlannedBookings(
+            { status: 'available', currentTeam: null, nextBooking: null },
+            remainingPlanned
+          )
           return {
             reservations: updatedReservations,
             sessionData: {
@@ -1007,32 +1204,45 @@ export const useReservationStore = create<ReservationStore>()(
         }),
 
       setNextBooking: (tableId, reservationId) =>
+        get().setNextBookingMulti([tableId], reservationId),
+
+      setNextBookingMulti: (tableIds, reservationId, targetLabel) =>
         set((state) => {
           const reservation = state.reservations.find((r) => r.id === reservationId)
-          if (!reservation) return state
+          if (!reservation || tableIds.length === 0) return state
 
           const session = state.activeSession
           const sd = state.sessionData[session]
-          const current = sd.tableStates[tableId]
           const newTableStates = { ...sd.tableStates }
+          const uniqueTableIds = [...new Set(tableIds)]
+          const candidateBooking: NextBooking = {
+            reservationId,
+            name: reservation.name,
+            partySize: reservation.partySize,
+            startTime: reservation.startTime,
+            endTime: reservation.endTime,
+            scopeTableIds: uniqueTableIds,
+            ...(targetLabel ? { targetLabel } : {}),
+          }
 
           // Remove duplicate nextBooking for this reservation from any other table
           for (const tid of Object.keys(newTableStates)) {
-            if (newTableStates[tid].nextBooking?.reservationId === reservationId) {
-              newTableStates[tid] = { ...newTableStates[tid], nextBooking: null }
+            const planned = getPlannedBookings(newTableStates[tid]).filter((b) => b.reservationId !== reservationId)
+            newTableStates[tid] = setPlannedBookings(newTableStates[tid], planned)
+          }
+
+          // Abort if any selected table has a time-overlapping planned booking (other reservation)
+          for (const tableId of uniqueTableIds) {
+            const planned = getPlannedBookings(newTableStates[tableId])
+            if (planned.some((b) => bookingConflictsOnSameTable(b, candidateBooking, reservationId))) {
+              return state
             }
           }
 
-          newTableStates[tableId] = {
-            status: current?.status ?? 'available',
-            currentTeam: current?.currentTeam ?? null,
-            nextBooking: {
-              reservationId,
-              name: reservation.name,
-              partySize: reservation.partySize,
-              startTime: reservation.startTime,
-              endTime: reservation.endTime,
-            },
+          for (const tableId of uniqueTableIds) {
+            const planned = getPlannedBookings(newTableStates[tableId]).filter((b) => b.reservationId !== reservationId)
+            planned.push(candidateBooking)
+            newTableStates[tableId] = setPlannedBookings(newTableStates[tableId], planned)
           }
 
           const cleaned = autoSplitOrphanMerges(newTableStates, sd.merges)
@@ -1051,7 +1261,36 @@ export const useReservationStore = create<ReservationStore>()(
           if (!sd.tableStates[tableId]) return state
 
           const newTableStates = { ...sd.tableStates }
-          newTableStates[tableId] = { ...newTableStates[tableId], nextBooking: null }
+          const currentDisplayedReservationId = newTableStates[tableId].nextBooking?.reservationId
+          if (!currentDisplayedReservationId) return state
+          const planned = getPlannedBookings(newTableStates[tableId]).filter((b) => b.reservationId !== currentDisplayedReservationId)
+          newTableStates[tableId] = setPlannedBookings(newTableStates[tableId], planned)
+
+          const cleaned = autoSplitOrphanMerges(newTableStates, sd.merges)
+          return {
+            sessionData: {
+              ...state.sessionData,
+              [session]: { tableStates: cleaned.tableStates, merges: cleaned.merges },
+            },
+          }
+        }),
+
+      clearNextBookingByReservation: (reservationId) =>
+        set((state) => {
+          const session = state.activeSession
+          const sd = state.sessionData[session]
+          const newTableStates = { ...sd.tableStates }
+          let changed = false
+
+          for (const tid of Object.keys(newTableStates)) {
+            const before = getPlannedBookings(newTableStates[tid])
+            const after = before.filter((b) => b.reservationId !== reservationId)
+            if (after.length !== before.length) {
+              newTableStates[tid] = setPlannedBookings(newTableStates[tid], after)
+              changed = true
+            }
+          }
+          if (!changed) return state
 
           const cleaned = autoSplitOrphanMerges(newTableStates, sd.merges)
           return {
@@ -1070,9 +1309,12 @@ export const useReservationStore = create<ReservationStore>()(
           if (!tableState?.nextBooking) return state
 
           const newTableStates = { ...sd.tableStates }
+          const displayedReservationId = tableState.nextBooking.reservationId
+          const planned = getPlannedBookings(tableState).map((b) =>
+            b.reservationId === displayedReservationId ? { ...b, targetLabel: label } : b
+          )
           newTableStates[tableId] = {
-            ...tableState,
-            nextBooking: { ...tableState.nextBooking, targetLabel: label },
+            ...setPlannedBookings(tableState, planned),
           }
 
           return {
@@ -1266,7 +1508,7 @@ export const useReservationStore = create<ReservationStore>()(
     }),
     {
       name: 'namou-storage',
-      version: 6,
+      version: 8,
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>
         if (version < 2) {

@@ -2,25 +2,25 @@
 @import "tailwindcss";
 
 @theme {
-  /* 나무 느낌 미니멀 컬러 팔레트 */
-  --color-cream: #F7F3ED;
-  --color-surface: #FEFCF9;
-  --color-primary: #8B6F47;
-  --color-primary-light: #B8976A;
-  --color-primary-dark: #6B5535;
-  --color-terracotta: #C4956A;
-  --color-terracotta-light: #DDB896;
-  --color-charcoal: #3A3128;
-  --color-charcoal-light: #6B5F52;
-  --color-charcoal-lighter: #9C8F80;
-  --color-border: #E8E0D5;
-  --color-border-hover: #D9CFC1;
-  --color-occupied: #C75B3F;
-  --color-occupied-light: #F5DED6;
-  --color-available: #5B8C5A;
-  --color-available-light: #DCE9DB;
-  --color-reserved: #C4A44A;
-  --color-reserved-light: #F0E6C8;
+  /* ivory + deep wood brown palette */
+  --color-cream: #F6F1E6;
+  --color-surface: #FCF8EF;
+  --color-primary: #5B3A1E;
+  --color-primary-light: #7A512C;
+  --color-primary-dark: #3A2412;
+  --color-terracotta: #9C5D3B;
+  --color-terracotta-light: #CF9E7C;
+  --color-charcoal: #1A120C;
+  --color-charcoal-light: #2D2016;
+  --color-charcoal-lighter: #564130;
+  --color-border: #B99C7C;
+  --color-border-hover: #9F815F;
+  --color-occupied: #A54232;
+  --color-occupied-light: #F0D8D1;
+  --color-available: #3E6B4B;
+  --color-available-light: #D8E7DA;
+  --color-reserved: #9A7722;
+  --color-reserved-light: #EEDFAF;
 
   --font-sans: 'Pretendard Variable', 'Pretendard', system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
@@ -35,11 +35,31 @@ body {
   -moz-osx-font-smoothing: grayscale;
   overflow: hidden;
   user-select: none;
+  font-size: 15px;
 }
 
 #root {
   width: 100vw;
   height: 100vh;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: var(--font-sans);
+}
+
+button {
+  font-weight: 600;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
 }
 
 /* Custom scrollbar */

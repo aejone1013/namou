@@ -24,12 +24,7 @@ export function floorGridStyle(step: number, mode: 'edit' | 'view'): CSSProperti
     }
   }
 
-  return {
-    backgroundImage: [
-      'radial-gradient(120% 80% at 50% 10%, rgba(255,255,255,0.55), rgba(255,255,255,0) 70%)',
-      'linear-gradient(to bottom, rgba(58,49,40,0.02), rgba(58,49,40,0.04))',
-    ].join(','),
-  }
+  return {}
 }
 
 export function absoluteRectStyle(rect: Rect, options?: { zIndex?: number; pointerEvents?: CSSProperties['pointerEvents'] }): CSSProperties {

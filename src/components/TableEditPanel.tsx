@@ -111,7 +111,7 @@ export default function TableEditPanel() {
                     (sd.tableStates[m.mergedId]?.currentTeam || sd.tableStates[m.mergedId]?.nextBooking)
                   )
                 })
-                if (hasOccupied && !window.confirm('이 테이블에 착석/예약이 있습니다. 삭제하면 해당 예약이 대기 상태로 돌아갑니다. 계속하시겠습니까?')) return
+                if (hasOccupied && !window.confirm('이 테이블을 삭제하면 연결된 팀은 대기 상태로 돌아갑니다. 삭제할까요?')) return
                 saveUndoSnapshot('테이블 삭제')
                 removeTable(selectedTable.id)
                 toast.show(toastMessages.tableDeleted, 'info', toastActions.undo(() => undo()))

@@ -1,12 +1,21 @@
 import { useState, useEffect } from 'react'
 import {
-  Users, Clock, Info, Settings,
+  Users, Clock, Info,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useReservationStore } from '@/store/useReservationStore'
 import { useToastStore } from '@/store/useToastStore'
 import { toastActions, toastMessages } from '@/features/toast/toastPresets'
-import { compareTableLabel, getMergeGroup, getMergeLabel, getTableNumber, isContiguousRange } from '@/data/dummy'
+import {
+  compareTableLabel,
+  getCurrentTimeHHMM,
+  getMergeGroup,
+  getMergeLabel,
+  getTableNumber,
+  isContiguousRange,
+  timeToMinutes,
+} from '@/data/dummy'
+import type { TableInfo } from '@/data/dummy'
 import { planAdjacentMerge } from '@/store/mergePlanner'
 import AvailableTableActions from './control-panel/AvailableTableActions'
 import NextBookingSection from './control-panel/NextBookingSection'
@@ -21,9 +30,6 @@ export default function ControlPanel() {
     reservations,
     isEditMode,
     activeSession,
-    toggleEditMode,
-    resetReservations,
-    resetSetup,
     clearTable,
     walkInTable,
     moveToTable,
@@ -31,6 +37,7 @@ export default function ControlPanel() {
     seatWithSelectedMerge,
     setNextBooking,
     clearNextBooking,
+    clearNextBookingByReservation,
     setNextBookingTargetLabel,
     saveUndoSnapshot,
     setMergePreviewTableIds,
@@ -39,6 +46,7 @@ export default function ControlPanel() {
   const toast = useToastStore()
 
   const effectiveTables = store.getEffectiveTables()
+  const session = store.sessionData[activeSession]
   const table = focusedTableId ? effectiveTables.find((t) => t.id === focusedTableId) ?? null : null
 
   const [showWalkIn, setShowWalkIn] = useState(false)
@@ -87,10 +95,91 @@ export default function ControlPanel() {
     ? reservations.find((r) => r.id === table.currentTeam!.reservationId)
     : null
 
+  const mirroredNextBookingSource = (() => {
+    if (!table || table.nextBooking) return null
+    for (const t of effectiveTables) {
+      const nb = t.nextBooking
+      if (!nb || t.id === table.id) continue
+      if (nb.scopeTableIds?.includes(table.id)) {
+        return { tableId: t.id, tableLabel: t.label, nextBooking: nb }
+      }
+      const label = nb.targetLabel
+      if (!label) continue
+      const targetNum = getTableNumber(table.label)
+      const rangeMatch = label.match(/^T(\d+)(?:[+\-~]T?)(\d+)$/)
+      if (rangeMatch) {
+        const start = parseInt(rangeMatch[1], 10)
+        const end = parseInt(rangeMatch[2], 10)
+        const min = Math.min(start, end)
+        const max = Math.max(start, end)
+        if (targetNum >= min && targetNum <= max) {
+          return { tableId: t.id, tableLabel: t.label, nextBooking: nb }
+        }
+      }
+    }
+    return null
+  })()
+  const detailNextBooking = table?.nextBooking ?? mirroredNextBookingSource?.nextBooking ?? null
+  const detailNextBookingSourceTableId = table?.nextBooking ? table.id : mirroredNextBookingSource?.tableId
+  const detailNextBookingHasPlannedMerge =
+    (detailNextBooking?.scopeTableIds?.length ?? 0) >= 2 ||
+    (!!detailNextBooking?.targetLabel && /[+\-~]/.test(detailNextBooking.targetLabel))
+
+  const handleSeatDisplayedNextBooking = () => {
+    if (!table || !detailNextBooking || !detailNextBookingSourceTableId) return
+
+    // If a planned merge label exists (e.g. T1-4), seat using that full planned range from any table in the range.
+    if (detailNextBookingHasPlannedMerge) {
+      let plannedTables = (detailNextBooking.scopeTableIds ?? [])
+        .map((id) => effectiveTables.find((t) => t.id === id))
+        .filter(Boolean)
+        .sort((a, b) => compareTableLabel(a!.label, b!.label)) as TableInfo[]
+
+      if (plannedTables.length < 2 && detailNextBooking.targetLabel) {
+        const match = detailNextBooking.targetLabel.match(/^T(\d+)(?:[+\-~]T?)(\d+)$/)
+        if (match) {
+          const start = parseInt(match[1], 10)
+          const end = parseInt(match[2], 10)
+          const min = Math.min(start, end)
+          const max = Math.max(start, end)
+          plannedTables = effectiveTables
+            .filter((t) => {
+              const num = getTableNumber(t.label)
+              return num >= min && num <= max
+            })
+            .sort((a, b) => compareTableLabel(a.label, b.label))
+        }
+      }
+
+      const base = plannedTables[0]
+      if (base) {
+        const mergeIds = plannedTables.slice(1).map((t) => t.id)
+        seatWithSelectedMerge(detailNextBooking.reservationId, base.id, mergeIds)
+        clearNextBookingByReservation(detailNextBooking.reservationId)
+        toast.show('다음 예약을 병합 착석 처리했습니다.', 'success')
+        resetSubState()
+        return
+      }
+    }
+
+    if (detailNextBooking.partySize <= table.seats) {
+      seatReservation(detailNextBooking.reservationId, table.id)
+      clearNextBookingByReservation(detailNextBooking.reservationId)
+      toast.show('다음 예약을 착석 처리했습니다.', 'success')
+      resetSubState()
+    }
+  }
+
   // Filter waiting reservations by active session
+  const assignedWaitingReservationIds = new Set(
+    Object.values(session.tableStates)
+      .flatMap((ts) => (ts.plannedBookings ?? (ts.nextBooking ? [ts.nextBooking] : [])))
+      .map((b) => b.reservationId)
+  )
+
   const waitingReservations = table
     ? reservations.filter(
-        (r) => r.status === 'waiting' && r.period === activeSession
+        (r) => r.status === 'waiting' && r.period === activeSession && !assignedWaitingReservationIds.has(r.id)
       )
     : []
 
@@ -104,6 +193,7 @@ export default function ControlPanel() {
 
     return reservations.filter((r) => {
       if (r.status !== 'waiting' || r.period !== activeSession) return false
+      if (assignedWaitingReservationIds.has(r.id)) return false
       if (r.partySize <= table.seats) return true
       if (!isBaseTable) return false
 
@@ -129,6 +219,24 @@ export default function ControlPanel() {
 
   const handleWalkIn = () => {
     if (!table) return
+    if (detailNextBooking && table.status === 'available') {
+      const nowMins = timeToMinutes(getCurrentTimeHHMM())
+      const nextMins = timeToMinutes(detailNextBooking.startTime)
+      const minsLeft = nextMins - nowMins
+      if (minsLeft < 90) {
+        const msg = minsLeft >= 0
+          ? minsLeft <= 15
+            ? `${detailNextBooking.startTime} 예약 ${minsLeft}분 전입니다. 워크인 배정 시 다음 예약이 지연될 수 있습니다.`
+            : minsLeft <= 30
+              ? `${detailNextBooking.startTime} 예약 ${minsLeft}분 전입니다. 워크인 배정을 진행할까요?`
+              : `${detailNextBooking.startTime} 예약이 예정되어 있습니다. 워크인 배정을 진행할까요?`
+          : `다음 예약 시간(${detailNextBooking.startTime})이 지났습니다. 워크인 배정을 진행할까요?`
+        if (!window.confirm(msg)) return
+        if (minsLeft <= 15 && minsLeft >= 0) {
+          if (!window.confirm('정말 진행할까요? 진행하면 다음 예약 준비 시간이 매우 짧아집니다.')) return
+        }
+      }
+    }
     walkInTable(table.id, walkInSize, walkInName.trim() || undefined)
     resetSubState()
   }
@@ -146,12 +254,38 @@ export default function ControlPanel() {
 
   const handleClearFocusedTable = () => {
     if (!table) return
-    if (table.nextBooking) {
-      if (!window.confirm(`다음 예약 (${table.nextBooking.name}, ${table.nextBooking.partySize}명)이 자동 착석됩니다. 계속하시겠습니까?`)) return
+    const collectAutoSeatCandidates = () => {
+      const tableStates = store.sessionData[activeSession].tableStates
+      const buckets = [
+        ...(tableStates[table.id]?.plannedBookings ?? (tableStates[table.id]?.nextBooking ? [tableStates[table.id].nextBooking!] : [])),
+      ]
+      if (table.mergedFrom && table.mergedFrom.length >= 2) {
+        for (const origin of table.mergedFrom) {
+          const planned = tableStates[origin.id]?.plannedBookings ?? (tableStates[origin.id]?.nextBooking ? [tableStates[origin.id].nextBooking!] : [])
+          buckets.push(...planned)
+        }
+      }
+      const deduped = buckets.filter((b, i, arr) =>
+        arr.findIndex((x) =>
+          x.reservationId === b.reservationId &&
+          x.startTime === b.startTime &&
+          x.endTime === b.endTime &&
+          (x.targetLabel ?? '') === (b.targetLabel ?? '')
+        ) === i
+      ).sort((a, b) => a.startTime.localeCompare(b.startTime))
+      if (deduped.length === 0) return []
+      const earliest = deduped[0].startTime
+      return deduped.filter((b) => b.startTime === earliest)
+    }
+
+    const autoSeatCandidates = collectAutoSeatCandidates()
+    if (autoSeatCandidates.length > 0) {
+      const queue = autoSeatCandidates.map((b) => `${b.name}(${b.partySize}) ${b.startTime}`).join(', ')
+      if (!window.confirm(`이 작업을 하면 다음 팀이 자동 착석됩니다:\n${queue}\n진행할까요?`)) return
     }
     saveUndoSnapshot('테이블 비우기')
     clearTable(table.id)
-    toast.show(toastMessages.tableCleared, 'info', toastActions.undo(() => undo()))
+    toast.show(`${table.label} 테이블을 비웠습니다.`, 'info', toastActions.undo(() => undo()))
     resetSubState()
   }
 
@@ -254,7 +388,7 @@ export default function ControlPanel() {
   })()
 
   const handleSeatAtAlternativeTable = (sourceTableId: string, reservationId: string, targetTableId: string, targetLabel: string) => {
-    if (!window.confirm(`다른 빈 테이블(${targetLabel})로 바로 착석 처리할까요?`)) return
+    if (!window.confirm(`${targetLabel}로 바로 착석 처리할까요?`)) return
     clearNextBooking(sourceTableId)
     seatReservation(reservationId, targetTableId)
     toast.show(`다른 빈 테이블(${targetLabel})로 착석 처리했습니다.`, 'success')
@@ -340,66 +474,14 @@ export default function ControlPanel() {
 
   return (
     <aside className="w-[232px] min-w-[232px] h-full bg-surface border-l border-border flex flex-col overflow-y-auto">
-      {/* Section 1: Settings (always visible) */}
-      <div className="px-3 py-3 border-b border-border">
-        <div className="flex items-center gap-1.5 mb-2">
-          <Settings size={12} className="text-charcoal-lighter" />
-          <span className="text-[11px] font-semibold text-charcoal-light uppercase tracking-wide">설정</span>
-        </div>
-
-        <div className="grid grid-cols-3 gap-0.5 rounded-xl bg-cream p-0.5 border border-border">
-          <button
-            onClick={toggleEditMode}
-            className={cn(
-              'w-full inline-flex items-center justify-center px-2 py-1.5 rounded-[10px]',
-              'text-[11px] font-medium transition-colors',
-              isEditMode
-                ? 'bg-primary text-white hover:bg-primary-dark shadow-sm'
-                : 'bg-transparent text-charcoal hover:bg-surface'
-            )}
-            title={isEditMode ? '편집 완료' : '배치 편집'}
-          >
-            <span className="whitespace-nowrap">{isEditMode ? '편집 완료' : '배치 편집'}</span>
-          </button>
-
-          <button
-            onClick={() => {
-              if (window.confirm('모든 예약을 초기화하시겠습니까? 테이블 배치는 유지됩니다.')) {
-                saveUndoSnapshot('예약 초기화')
-                resetReservations()
-                toast.show(toastMessages.reservationsReset, 'info', toastActions.undo(() => undo()))
-              }
-            }}
-            className="w-full inline-flex items-center justify-center px-2 py-1.5 rounded-[10px] text-[11px] font-medium bg-transparent text-charcoal hover:bg-surface transition-colors"
-            title="예약 초기화"
-          >
-            <span className="whitespace-nowrap">예약 초기화</span>
-          </button>
-
-          <button
-            onClick={() => {
-              if (window.confirm('설정을 초기화하시겠습니까? 모든 예약과 배치가 삭제됩니다.')) {
-                saveUndoSnapshot('설정 초기화')
-                resetSetup()
-                toast.show(toastMessages.settingsReset, 'info', toastActions.undo(() => undo()))
-              }
-            }}
-            className="w-full inline-flex items-center justify-center px-2 py-1.5 rounded-[10px] text-[11px] font-medium bg-transparent text-charcoal-light hover:text-occupied hover:bg-occupied-light transition-colors"
-            title="설정 초기화"
-          >
-            <span className="whitespace-nowrap">설정 초기화</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Section 2: TableEditPanel (edit mode) */}
+      {/* Section: TableEditPanel (edit mode) */}
       {isEditMode && (
-        <div className="border-t border-border overflow-y-auto flex-1">
+        <div className="overflow-y-auto flex-1">
           <TableEditPanel />
         </div>
       )}
 
-      {/* Section 2: Table Detail (normal mode) */}
+      {/* Section: Table Detail (normal mode) */}
       {!isEditMode && (
         <div className="flex-1 px-3 py-3">
           {!table ? (
@@ -425,6 +507,15 @@ export default function ControlPanel() {
               {/* Occupied + reservation linked */}
               {table.status === 'occupied' && linkedReservation && (
                 <div className="space-y-2">
+                  <OccupiedMoveClearActions
+                    showMoveSelect={showMoveSelect}
+                    availableForMove={availableForMove}
+                    onMove={handleMove}
+                    onShowMoveSelect={() => setShowMoveSelect(true)}
+                    onCancelMoveSelect={() => setShowMoveSelect(false)}
+                    onClear={handleClearFocusedTable}
+                  />
+
                   <div className="text-[11px] space-y-1">
                     <p className="font-medium text-charcoal">
                       {linkedReservation.name}
@@ -435,7 +526,12 @@ export default function ControlPanel() {
                       {linkedReservation.startTime} ~ {linkedReservation.endTime}
                     </div>
                   </div>
+                </div>
+              )}
 
+              {/* Occupied + walk-in */}
+              {table.status === 'occupied' && !linkedReservation && (
+                <div className="space-y-2">
                   <OccupiedMoveClearActions
                     showMoveSelect={showMoveSelect}
                     availableForMove={availableForMove}
@@ -444,12 +540,7 @@ export default function ControlPanel() {
                     onCancelMoveSelect={() => setShowMoveSelect(false)}
                     onClear={handleClearFocusedTable}
                   />
-                </div>
-              )}
 
-              {/* Occupied + walk-in */}
-              {table.status === 'occupied' && !linkedReservation && (
-                <div className="space-y-2">
                   <div className="text-[11px] text-charcoal py-0.5">
                     {table.currentTeam
                       ? (
@@ -460,27 +551,8 @@ export default function ControlPanel() {
                       )
                       : '사용중'}
                   </div>
-
-                  <OccupiedMoveClearActions
-                    showMoveSelect={showMoveSelect}
-                    availableForMove={availableForMove}
-                    onMove={handleMove}
-                    onShowMoveSelect={() => setShowMoveSelect(true)}
-                    onCancelMoveSelect={() => setShowMoveSelect(false)}
-                    onClear={handleClearFocusedTable}
-                  />
                 </div>
               )}
-
-              <NextBookingSection
-                table={table}
-                waitingReservations={waitingReservationsForNextBooking}
-                showNextBookingSelect={showNextBookingSelect}
-                setShowNextBookingSelect={setShowNextBookingSelect}
-                onSetNextBooking={setNextBooking}
-                onClearNextBooking={clearNextBooking}
-                onSetTargetLabel={setNextBookingTargetLabel}
-              />
 
               {/* Available */}
               <AvailableTableActions
@@ -491,7 +563,8 @@ export default function ControlPanel() {
                 setWalkInName={setWalkInName}
                 walkInSize={walkInSize}
                 setWalkInSize={setWalkInSize}
-                waitingReservations={waitingReservations}
+                waitingReservations={(mirroredNextBookingSource || table.nextBooking) ? [] : waitingReservations}
+                hideEmptyWaitingMessage={!!detailNextBooking}
                 onSeatReservation={(reservationId) => {
                   const reservation = waitingReservations.find((r) => r.id === reservationId)
                   if (!reservation) return
@@ -503,6 +576,32 @@ export default function ControlPanel() {
                   setPendingSeatMergeReservationId(reservationId)
                 }}
                 onWalkIn={handleWalkIn}
+              />
+
+              <NextBookingSection
+                table={table}
+                waitingReservations={waitingReservationsForNextBooking}
+                showNextBookingSelect={showNextBookingSelect}
+                setShowNextBookingSelect={setShowNextBookingSelect}
+                onSetNextBooking={setNextBooking}
+                onSetNextBookingMulti={store.setNextBookingMulti}
+                onClearNextBooking={clearNextBooking}
+                onSetTargetLabel={setNextBookingTargetLabel}
+                mirroredNextBookingSource={mirroredNextBookingSource}
+                canSeatDisplayedNextBooking={
+                  table.status === 'available' &&
+                  !!detailNextBooking &&
+                  !!detailNextBookingSourceTableId &&
+                  (detailNextBooking.partySize <= table.seats || detailNextBookingHasPlannedMerge)
+                }
+                onSeatDisplayedNextBooking={
+                  table.status === 'available' &&
+                  !!detailNextBooking &&
+                  !!detailNextBookingSourceTableId &&
+                  (detailNextBooking.partySize <= table.seats || detailNextBookingHasPlannedMerge)
+                    ? handleSeatDisplayedNextBooking
+                    : undefined
+                }
               />
 
               {table.status === 'available' && pendingSeatMergeReservation && pendingSeatMergeReservation.partySize > table.seats && (
@@ -553,7 +652,11 @@ export default function ControlPanel() {
                 </div>
               )}
 
-              {table.status === 'available' && table.nextBooking && table.nextBooking.partySize > table.seats && (
+              {table.status === 'available' &&
+                table.nextBooking &&
+                table.nextBooking.partySize > table.seats &&
+                !mirroredNextBookingSource &&
+                !detailNextBookingHasPlannedMerge && (
                 <div className="border-t border-border pt-2">
                   <div className="rounded-xl border border-reserved/20 bg-reserved/8 px-2.5 py-2">
                     <p className="text-[10px] font-medium text-charcoal">다음 예약 인원({table.nextBooking.partySize}명)이 현재 테이블 좌석({table.seats})을 초과합니다.</p>

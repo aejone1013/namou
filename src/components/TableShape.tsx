@@ -1,6 +1,5 @@
 import { Users, CalendarClock } from 'lucide-react'
 import { cn } from '@/lib/cn'
-import { getTableNumber } from '@/data/dummy'
 import type { TableInfo } from '@/data/dummy'
 import { absoluteRectStyle } from '@/features/floor-map/floorMapStyles'
 import { useReservationStore } from '@/store/useReservationStore'
@@ -28,30 +27,20 @@ const statusStyles = {
 }
 
 export default function TableShape({ table }: TableShapeProps) {
-  const { reservations, focusedTableId, mergePreviewTableIds, setFocusedTable } = useReservationStore()
-  const effectiveTables = useReservationStore.getState().getEffectiveTables()
+  const { reservations, focusedTableId, mergePreviewTableIds, setFocusedTable, sessionData, activeSession } = useReservationStore()
   const isOpen = focusedTableId === table.id
   const isMergePreview = mergePreviewTableIds.includes(table.id)
-  const tableNum = getTableNumber(table.label)
-  const plannedMergeHost = effectiveTables.find((t) => {
-    const label = t.nextBooking?.targetLabel
-    if (!label || t.id === table.id) return false
-    if (!/[+~]/.test(label)) return false
-    const plusMatch = label.match(/^T(\d+)\+T(\d+)$/)
-    if (plusMatch) {
-      const a = parseInt(plusMatch[1], 10)
-      const b = parseInt(plusMatch[2], 10)
-      return tableNum === a || tableNum === b
-    }
-    const rangeMatch = label.match(/^T(\d+)~T(\d+)$/)
-    if (rangeMatch) {
-      const start = parseInt(rangeMatch[1], 10)
-      const end = parseInt(rangeMatch[2], 10)
-      return tableNum >= Math.min(start, end) && tableNum <= Math.max(start, end)
-    }
-    return false
-  })
-  const isPlannedMergeTarget = !!plannedMergeHost
+  const tableState = sessionData[activeSession].tableStates[table.id]
+  const plannedBookings = tableState?.plannedBookings ?? (table.nextBooking ? [table.nextBooking] : [])
+  const plannedBookingCount = plannedBookings.length
+  const hasMergeScopedPlannedBooking = plannedBookings.some(
+    (booking) =>
+      (booking.scopeTableIds?.length ?? 0) >= 2 ||
+      (!!booking.targetLabel && /[+\-~]/.test(booking.targetLabel))
+  )
+  const isScopedMultiBooking = (table.nextBooking?.scopeTableIds?.length ?? 0) >= 2
+  const showSimpleNextBookingDot = !!table.nextBooking && !isScopedMultiBooking && !(table.nextBooking.targetLabel && /[+\-~]/.test(table.nextBooking.targetLabel))
+  const simpleNextBooking = showSimpleNextBookingDot ? table.nextBooking : null
   const style = statusStyles[table.status]
 
   const linkedReservation = table.currentTeam?.reservationId
@@ -74,7 +63,6 @@ export default function TableShape({ table }: TableShapeProps) {
         style.bg,
         style.border,
         style.shadow,
-        isPlannedMergeTarget && 'ring-2 ring-reserved/25 ring-offset-1 ring-offset-surface/70',
         isMergePreview && 'ring-2 ring-reserved/50 shadow-[0_0_0_3px_rgba(196,164,74,0.10)]',
         isOpen && 'ring-2 ring-primary/30 scale-[1.03]',
         'rounded-xl'
@@ -110,24 +98,22 @@ export default function TableShape({ table }: TableShapeProps) {
         </span>
       )}
 
-      {/* nextBooking indicator */}
-      {table.nextBooking && (
+      {(((table.mergedFrom?.length ?? 0) >= 2) || !hasMergeScopedPlannedBooking) && (simpleNextBooking || plannedBookingCount > 0) && (
         <div
-          className="absolute -top-1.5 -right-1.5 w-4.5 h-4.5 bg-reserved rounded-full flex items-center justify-center shadow-sm ring-2 ring-surface"
-          title={`다음: ${table.nextBooking.name} ${table.nextBooking.startTime}`}
+          className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 bg-reserved text-white rounded-full flex items-center justify-center text-[9px] font-bold shadow-sm"
+          title={
+            plannedBookingCount > 1
+              ? `예약 배정 ${plannedBookingCount}건`
+              : simpleNextBooking
+                ? `다음: ${simpleNextBooking.name} ${simpleNextBooking.startTime}`
+                : '다음 예약'
+          }
         >
-          <CalendarClock size={8} className="text-white" />
+          {plannedBookingCount > 1 ? plannedBookingCount : <CalendarClock size={8} className="text-white" />}
         </div>
       )}
 
-      {isPlannedMergeTarget && !table.nextBooking && (
-        <div
-          className="absolute -top-1.5 -left-1.5 min-w-4 h-4 px-1 bg-reserved/90 rounded-full flex items-center justify-center shadow-sm ring-2 ring-surface"
-          title={`병합 예정 범위 (${plannedMergeHost?.nextBooking?.targetLabel})`}
-        >
-          <span className="text-[8px] leading-none font-bold text-white">예</span>
-        </div>
-      )}
+      {/* 병합 예정 배지는 범위 테두리(FloorMap) 우상단에 표시 */}
     </div>
   )
 }
