@@ -1,0 +1,113 @@
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css');
+@import "tailwindcss";
+
+@theme {
+  /* ivory + deep wood brown palette */
+  --color-cream: #F6F1E6;
+  --color-surface: #FCF8EF;
+  --color-primary: #5B3A1E;
+  --color-primary-light: #7A512C;
+  --color-primary-dark: #3A2412;
+  --color-terracotta: #9C5D3B;
+  --color-terracotta-light: #CF9E7C;
+  --color-charcoal: #1A120C;
+  --color-charcoal-light: #2D2016;
+  --color-charcoal-lighter: #564130;
+  --color-border: #B99C7C;
+  --color-border-hover: #9F815F;
+  --color-occupied: #A54232;
+  --color-occupied-light: #F0D8D1;
+  --color-available: #3E6B4B;
+  --color-available-light: #D8E7DA;
+  --color-reserved: #9A7722;
+  --color-reserved-light: #EEDFAF;
+
+  --font-sans: 'Pretendard Variable', 'Pretendard', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--color-cream);
+  color: var(--color-charcoal);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+  user-select: none;
+  font-size: 15px;
+}
+
+#root {
+  width: 100vw;
+  height: 100vh;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: var(--font-sans);
+}
+
+button {
+  font-weight: 600;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--color-border-hover);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-charcoal-lighter);
+}
+
+/* Animations */
+@keyframes slide-in-from-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes zoom-in-95 {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.animate-in {
+  animation-fill-mode: both;
+}
+
+.slide-in-from-right {
+  animation: slide-in-from-right 0.2s ease-out;
+}
+
+.fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+.zoom-in-95 {
+  animation: zoom-in-95 0.2s ease-out;
+}
