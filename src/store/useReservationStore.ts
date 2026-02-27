@@ -1231,6 +1231,22 @@ export const useReservationStore = create<ReservationStore>()(
             newTableStates[tid] = setPlannedBookings(newTableStates[tid], planned)
           }
 
+          // Abort if any existing booking in session overlaps in both time and scope.
+          // Scope fallback: legacy single-table bookings may not have scopeTableIds.
+          for (const [stateTableId, ts] of Object.entries(newTableStates)) {
+            const planned = getPlannedBookings(ts)
+            for (const existing of planned) {
+              if (existing.reservationId === reservationId) continue
+              const existingScope = existing.scopeTableIds && existing.scopeTableIds.length > 0
+                ? existing.scopeTableIds
+                : [stateTableId]
+              if (!bookingScopesOverlap(existingScope, uniqueTableIds)) continue
+              if (bookingConflictsOnSameTable(existing, candidateBooking, reservationId)) {
+                return state
+              }
+            }
+          }
+
           // Abort if any selected table has a time-overlapping planned booking (other reservation)
           for (const tableId of uniqueTableIds) {
             const planned = getPlannedBookings(newTableStates[tableId])

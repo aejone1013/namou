@@ -259,4 +259,85 @@ describe('useReservationStore integration (multi planned bookings)', () => {
     store.undo()
     expect(useReservationStore.getState().reservations.find((r) => r.id === A.id)?.status).toBe('waiting')
   })
+
+  test('blocks same-time assignment on overlapping scope after multi-table booking is already assigned', () => {
+    const store = useReservationStore.getState()
+
+    const A = addReservation({ name: 'A', partySize: 6, startTime: '12:00', endTime: '13:30', period: 'lunch' })
+    const B = addReservation({ name: 'B', partySize: 3, startTime: '13:30', endTime: '15:00', period: 'lunch' })
+    const C = addReservation({ name: 'C', partySize: 2, startTime: '13:30', endTime: '15:00', period: 'lunch' })
+
+    store.setActiveSession('lunch')
+    store.setNextBookingMulti(['t1', 't2', 't3'], A.id, 'T1-3')
+    store.seatWithSelectedMerge(A.id, 't1', ['t2', 't3'])
+
+    // B assigned to T1-2
+    store.setNextBookingMulti(['t1', 't2'], B.id, 'T1-2')
+    let dinnerStates = useReservationStore.getState().sessionData.lunch.tableStates
+    expect(dinnerStates.t1?.plannedBookings?.some((p) => p.reservationId === B.id)).toBe(true)
+    expect(dinnerStates.t2?.plannedBookings?.some((p) => p.reservationId === B.id)).toBe(true)
+
+    // C same time on overlapping scope (T1) should be blocked
+    store.setNextBookingMulti(['t1'], C.id, 'T1')
+    dinnerStates = useReservationStore.getState().sessionData.lunch.tableStates
+    expect(dinnerStates.t1?.plannedBookings?.some((p) => p.reservationId === C.id) ?? false).toBe(false)
+
+    // C same time on non-overlapping scope (T3) should be allowed
+    store.setNextBookingMulti(['t3'], C.id, 'T3')
+    dinnerStates = useReservationStore.getState().sessionData.lunch.tableStates
+    expect(dinnerStates.t3?.plannedBookings?.some((p) => p.reservationId === C.id)).toBe(true)
+  })
+
+  test('allows later booking on same scope when times do not overlap', () => {
+    const store = useReservationStore.getState()
+    const A = addReservation({ name: 'A', partySize: 3, startTime: '12:00', endTime: '13:30', period: 'lunch' })
+    const B = addReservation({ name: 'B', partySize: 2, startTime: '13:30', endTime: '15:00', period: 'lunch' })
+
+    store.setActiveSession('lunch')
+    store.setNextBookingMulti(['t1', 't2'], A.id, 'T1-2')
+    store.setNextBookingMulti(['t1'], B.id, 'T1')
+
+    const lunchStates = useReservationStore.getState().sessionData.lunch.tableStates
+    expect(lunchStates.t1?.plannedBookings?.some((p) => p.reservationId === A.id)).toBe(true)
+    expect(lunchStates.t1?.plannedBookings?.some((p) => p.reservationId === B.id)).toBe(true)
+  })
+
+  test('keeps multiple same-start assignments visible in source table states after merged seat is occupied', () => {
+    const store = useReservationStore.getState()
+    const A = addReservation({ name: 'A', partySize: 6, startTime: '12:00', endTime: '13:30', period: 'lunch' })
+    const B = addReservation({ name: 'B', partySize: 3, startTime: '13:30', endTime: '15:00', period: 'lunch' })
+    const C = addReservation({ name: 'C', partySize: 2, startTime: '13:30', endTime: '15:00', period: 'lunch' })
+
+    store.setActiveSession('lunch')
+    store.setNextBookingMulti(['t1', 't2', 't3'], A.id, 'T1-3')
+    store.seatWithSelectedMerge(A.id, 't1', ['t2', 't3'])
+    store.setNextBookingMulti(['t1', 't2'], B.id, 'T1-2')
+    store.setNextBookingMulti(['t3'], C.id, 'T3')
+
+    const lunchStates = useReservationStore.getState().sessionData.lunch.tableStates
+    const t1 = lunchStates.t1?.plannedBookings ?? []
+    const t2 = lunchStates.t2?.plannedBookings ?? []
+    const t3 = lunchStates.t3?.plannedBookings ?? []
+
+    expect(t1.some((p) => p.reservationId === B.id)).toBe(true)
+    expect(t2.some((p) => p.reservationId === B.id)).toBe(true)
+    expect(t3.some((p) => p.reservationId === C.id)).toBe(true)
+  })
+
+  test('reassigning reservation to overlapping occupied scope does not wipe existing assignment', () => {
+    const store = useReservationStore.getState()
+    const A = addReservation({ name: 'A', partySize: 3, startTime: '13:30', endTime: '15:00', period: 'lunch' })
+    const B = addReservation({ name: 'B', partySize: 2, startTime: '13:30', endTime: '15:00', period: 'lunch' })
+
+    store.setActiveSession('lunch')
+    store.setNextBookingMulti(['t1', 't2'], A.id, 'T1-2')
+
+    // Attempt conflicting assignment for B on T2 should fail
+    store.setNextBookingMulti(['t2'], B.id, 'T2')
+
+    const lunchStates = useReservationStore.getState().sessionData.lunch.tableStates
+    expect(lunchStates.t1?.plannedBookings?.some((p) => p.reservationId === A.id)).toBe(true)
+    expect(lunchStates.t2?.plannedBookings?.some((p) => p.reservationId === A.id)).toBe(true)
+    expect(lunchStates.t2?.plannedBookings?.some((p) => p.reservationId === B.id) ?? false).toBe(false)
+  })
 })

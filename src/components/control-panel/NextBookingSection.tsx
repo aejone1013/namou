@@ -4,7 +4,7 @@ import { cn } from '@/lib/cn'
 import { getMergeGroup, getMergeLabel, getTableNumber } from '@/data/dummy'
 import type { Reservation, TableInfo } from '@/data/dummy'
 import { useReservationStore } from '@/store/useReservationStore'
-import { bookingConflictsOnSameTable } from '@/store/plannedBookingPolicies'
+import { bookingConflictsOnSameTable, bookingScopesOverlap } from '@/store/plannedBookingPolicies'
 import { useToastStore } from '@/store/useToastStore'
 
 interface NextBookingSectionProps {
@@ -249,24 +249,34 @@ export default function NextBookingSection({
     setShowNextBookingSelect(false)
   }
 
-  const displayNextBooking = table.nextBooking ?? mirroredNextBookingSource?.nextBooking ?? null
+  const rawDisplayNextBooking = table.nextBooking ?? mirroredNextBookingSource?.nextBooking ?? null
   const nextBookingSourceTableId = table.nextBooking ? table.id : (mirroredNextBookingSource?.tableId ?? table.id)
   const isMirroredNextBooking = !table.nextBooking && !!mirroredNextBookingSource
   const displayPlannedBookings = useMemo(() => {
-    if (!nextBookingSourceTableId) return []
     const sessionTableStates = store.sessionData[activeSession].tableStates
     const buckets: Array<NonNullable<typeof table.nextBooking>> = []
-    const addPlannedFrom = (tableId: string) => {
-      const ts = sessionTableStates[tableId]
+
+    const tableScopeIds =
+      table.mergedFrom && table.mergedFrom.length >= 2
+        ? table.mergedFrom.map((o) => o.id)
+        : [table.id]
+
+    for (const [stateTableId, ts] of Object.entries(sessionTableStates)) {
       const planned = ts?.plannedBookings ?? (ts?.nextBooking ? [ts.nextBooking] : [])
-      for (const booking of planned) buckets.push(booking)
+      for (const booking of planned) {
+        const bookingScope = booking.scopeTableIds && booking.scopeTableIds.length > 0
+          ? booking.scopeTableIds
+          : [stateTableId]
+        if (bookingScopesOverlap(bookingScope, tableScopeIds)) {
+          buckets.push(booking)
+        }
+      }
     }
 
-    addPlannedFrom(nextBookingSourceTableId)
-
-    // Fallback/augmentation: if this is a merged occupied table, include future bookings stored on origin tables too.
-    if (table.mergedFrom && table.mergedFrom.length >= 2) {
-      for (const origin of table.mergedFrom) addPlannedFrom(origin.id)
+    if (nextBookingSourceTableId) {
+      const ts = sessionTableStates[nextBookingSourceTableId]
+      const planned = ts?.plannedBookings ?? (ts?.nextBooking ? [ts.nextBooking] : [])
+      buckets.push(...planned)
     }
 
     const deduped = buckets.filter((booking, index, arr) =>
@@ -279,7 +289,7 @@ export default function NextBookingSection({
     )
 
     return deduped.sort((a, b) => a.startTime.localeCompare(b.startTime))
-  }, [store.sessionData, activeSession, nextBookingSourceTableId, table.mergedFrom])
+  }, [store.sessionData, activeSession, nextBookingSourceTableId, table.id, table.mergedFrom])
 
   const getBookingScopeIds = (booking: NonNullable<TableInfo['nextBooking']>) => {
     if (booking.scopeTableIds && booking.scopeTableIds.length > 0) return booking.scopeTableIds
@@ -312,6 +322,9 @@ export default function NextBookingSection({
     return getMergeLabel(nums)
   }
 
+  const displayNextBooking = rawDisplayNextBooking ?? (displayPlannedBookings[0] ?? null)
+  const isDerivedFromPlannedOnly = !rawDisplayNextBooking && !!displayNextBooking
+
   const displayNextBookingHasAssignedScope =
     !!displayNextBooking && (
       (displayNextBooking.scopeTableIds?.length ?? 0) > 0 ||
@@ -343,7 +356,16 @@ export default function NextBookingSection({
               <CalendarClock size={11} className="text-reserved" />
               다음 예약
             </p>
-            <button onClick={() => onClearNextBooking(nextBookingSourceTableId)} className="text-charcoal-lighter hover:text-occupied transition-colors">
+            <button
+              onClick={() => {
+                if (displayNextBooking && isDerivedFromPlannedOnly) {
+                  store.clearNextBookingByReservation(displayNextBooking.reservationId)
+                  return
+                }
+                onClearNextBooking(nextBookingSourceTableId)
+              }}
+              className="text-charcoal-lighter hover:text-occupied transition-colors"
+            >
               <X size={12} />
             </button>
           </div>

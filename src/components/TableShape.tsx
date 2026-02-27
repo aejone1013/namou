@@ -3,6 +3,7 @@ import { cn } from '@/lib/cn'
 import type { TableInfo } from '@/data/dummy'
 import { absoluteRectStyle } from '@/features/floor-map/floorMapStyles'
 import { useReservationStore } from '@/store/useReservationStore'
+import { bookingScopesOverlap } from '@/store/plannedBookingPolicies'
 
 interface TableShapeProps {
   table: TableInfo
@@ -30,8 +31,29 @@ export default function TableShape({ table }: TableShapeProps) {
   const { reservations, focusedTableId, mergePreviewTableIds, setFocusedTable, sessionData, activeSession } = useReservationStore()
   const isOpen = focusedTableId === table.id
   const isMergePreview = mergePreviewTableIds.includes(table.id)
-  const tableState = sessionData[activeSession].tableStates[table.id]
-  const plannedBookings = tableState?.plannedBookings ?? (table.nextBooking ? [table.nextBooking] : [])
+  const sessionTableStates = sessionData[activeSession].tableStates
+  const tableScopeIds =
+    table.mergedFrom && table.mergedFrom.length >= 2
+      ? table.mergedFrom.map((o) => o.id)
+      : [table.id]
+  const plannedBookings = Object.entries(sessionTableStates)
+    .flatMap(([stateTableId, ts]) => {
+      const planned = ts?.plannedBookings ?? (ts?.nextBooking ? [ts.nextBooking] : [])
+      return planned.filter((booking) => {
+        const bookingScope = booking.scopeTableIds && booking.scopeTableIds.length > 0
+          ? booking.scopeTableIds
+          : [stateTableId]
+        return bookingScopesOverlap(bookingScope, tableScopeIds)
+      })
+    })
+    .filter((booking, idx, arr) =>
+    arr.findIndex((b) =>
+      b.reservationId === booking.reservationId &&
+      b.startTime === booking.startTime &&
+      b.endTime === booking.endTime &&
+      (b.targetLabel ?? '') === (booking.targetLabel ?? '')
+    ) === idx
+  )
   const plannedBookingCount = plannedBookings.length
   const hasMergeScopedPlannedBooking = plannedBookings.some(
     (booking) =>

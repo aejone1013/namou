@@ -111,3 +111,28 @@ textarea:focus-visible {
 .zoom-in-95 {
   animation: zoom-in-95 0.2s ease-out;
 }
+
+/* POS/tablet ergonomics: larger targets on touch devices */
+@media (pointer: coarse) {
+  body {
+    font-size: 16px;
+    line-height: 1.45;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  button {
+    min-height: 40px;
+  }
+
+  input,
+  select,
+  textarea {
+    min-height: 42px;
+  }
+}
