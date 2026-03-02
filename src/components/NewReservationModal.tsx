@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { X, UserPlus, Clock, Users, Phone, MessageSquare, Minus, Plus, Sun, Moon } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useReservationStore } from '@/store/useReservationStore'
@@ -8,6 +8,24 @@ import { getStartTimeOptions, getFixedEndTime, formatFrenchPhone } from '@/data/
 function toMinutes(time: string): number {
   const [h, m] = time.split(':').map(Number)
   return h * 60 + m
+}
+
+function fromMinutes(total: number): string {
+  const h = Math.floor(total / 60)
+  const m = total % 60
+  return `${h}:${String(m).padStart(2, '0')}`
+}
+
+function buildEndTimeOptions(startTime: string): string[] {
+  if (!startTime) return []
+  const start = toMinutes(startTime)
+  const minEnd = start + 60
+  const maxEnd = Math.min(start + 120, 23 * 60 + 45)
+  const options: string[] = []
+  for (let m = minEnd; m <= maxEnd; m += 15) {
+    options.push(fromMinutes(m))
+  }
+  return options
 }
 
 function timesOverlap(startA: string, endA: string, startB: string, endB: string): boolean {
@@ -34,10 +52,27 @@ export default function NewReservationModal() {
   const [note, setNote] = useState('')
   const [duplicateCandidates, setDuplicateCandidates] = useState<Reservation[]>([])
   const [liveDuplicateCandidates, setLiveDuplicateCandidates] = useState<Reservation[]>([])
+  const [capacityError, setCapacityError] = useState<string | null>(null)
 
   const isEditing = !!editingReservation
 
   const startTimeOptions = getStartTimeOptions(period)
+  const maxCapacity = 16
+  const concurrentAtSelectedStart = useMemo(() => {
+    if (!startTime) return 0
+    const startMins = toMinutes(startTime)
+    const overlapping = reservations
+      .filter((r) => {
+        if (editingReservation && r.id === editingReservation.id) return false
+        if (r.period !== period) return false
+        if (r.status === 'completed') return false
+        const rs = toMinutes(r.startTime)
+        const re = toMinutes(r.endTime)
+        return rs <= startMins && startMins < re
+      })
+      .reduce((sum, r) => sum + r.partySize, 0)
+    return overlapping + partySize
+  }, [startTime, reservations, editingReservation, period, partySize])
 
   // 편집 모드일 때 기존 값 로드
   useEffect(() => {
@@ -63,7 +98,11 @@ export default function NewReservationModal() {
   const handleStartTimeChange = (val: string) => {
     setStartTime(val)
     if (val) {
-      setEndTime(getFixedEndTime(val))
+      const endOptions = buildEndTimeOptions(val)
+      const defaultEnd = getFixedEndTime(val)
+      if (!endTime || !endOptions.includes(endTime)) {
+        setEndTime(defaultEnd)
+      }
     } else {
       setEndTime('')
     }
@@ -86,6 +125,7 @@ export default function NewReservationModal() {
     setNote('')
     setDuplicateCandidates([])
     setLiveDuplicateCandidates([])
+    setCapacityError(null)
   }, [])
 
   const findDuplicateReservations = (): Reservation[] => {
@@ -122,6 +162,47 @@ export default function NewReservationModal() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim() || !partySize || !startTime || !endTime) return
+    setCapacityError(null)
+    if (toMinutes(endTime) <= toMinutes(startTime)) {
+      setCapacityError('종료 시간은 시작 시간보다 늦어야 합니다.')
+      return
+    }
+    const duration = toMinutes(endTime) - toMinutes(startTime)
+    if (duration < 60 || duration > 120) {
+      setCapacityError('예약 종료 시간은 시작 시간 기준 1시간~2시간 내에서 선택해주세요.')
+      return
+    }
+
+    const candidateStart = toMinutes(startTime)
+    const candidateEnd = toMinutes(endTime)
+    const relevant = reservations.filter((r) => {
+      if (editingReservation && r.id === editingReservation.id) return false
+      if (r.period !== period) return false
+      if (r.status === 'completed') return false
+      return timesOverlap(startTime, endTime, r.startTime, r.endTime)
+    })
+
+    const checkpoints = Array.from(new Set([
+      candidateStart,
+      ...relevant
+        .map((r) => toMinutes(r.startTime))
+        .filter((mins) => mins >= candidateStart && mins < candidateEnd),
+    ])).sort((a, b) => a - b)
+
+    for (const checkpoint of checkpoints) {
+      const concurrent = partySize + relevant
+        .filter((r) => {
+          const rs = toMinutes(r.startTime)
+          const re = toMinutes(r.endTime)
+          return rs <= checkpoint && checkpoint < re
+        })
+        .reduce((sum, r) => sum + r.partySize, 0)
+
+      if (concurrent > maxCapacity) {
+        setCapacityError(`해당 시간대 동시 예약 인원 ${concurrent}명으로 최대 ${maxCapacity}명을 초과합니다.`)
+        return
+      }
+    }
 
     if (!isEditing) {
       const duplicates = findDuplicateReservations()
@@ -173,13 +254,13 @@ export default function NewReservationModal() {
       {/* 모달 */}
       <div
         className={cn(
-          'relative w-[440px] bg-surface rounded-3xl shadow-2xl shadow-charcoal/10',
+          'relative w-[540px] max-w-[88vw] max-h-[86vh] overflow-y-auto bg-surface rounded-3xl shadow-2xl shadow-charcoal/10',
           'border border-border',
           'animate-in fade-in zoom-in-95 duration-200'
         )}
       >
         {/* 헤더 */}
-        <div className="flex items-center justify-between px-6 pt-6 pb-4">
+        <div className="flex items-center justify-between px-5 pt-5 pb-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-primary/10 rounded-2xl flex items-center justify-center">
               <UserPlus size={20} className="text-primary" />
@@ -188,7 +269,7 @@ export default function NewReservationModal() {
               <h2 className="text-base font-bold text-charcoal">
                 {isEditing ? '예약 수정' : '새 예약 추가'}
               </h2>
-              <p className="text-xs text-charcoal-lighter">
+              <p className="text-sm text-charcoal-lighter">
                 예약 정보를 입력해주세요
               </p>
             </div>
@@ -206,11 +287,11 @@ export default function NewReservationModal() {
         </div>
 
         {/* 폼 */}
-        <form onSubmit={handleSubmit} className="px-6 pb-6">
+        <form onSubmit={handleSubmit} className="px-5 pb-5">
           {duplicateCandidates.length > 0 && (
             <div className="mb-4 rounded-xl border border-occupied/30 bg-occupied/10 px-3 py-2.5">
-              <p className="text-xs font-semibold text-occupied">중복 예약 가능성이 있습니다.</p>
-              <p className="mt-0.5 text-[11px] text-charcoal-light">
+              <p className="text-sm font-semibold text-occupied">중복 예약 가능성이 있습니다.</p>
+              <p className="mt-0.5 text-[12px] text-charcoal-light">
                 같은 시간대에 동일 인물로 보이는 예약이 있어요. 예약 취소 또는 기존 예약 변경을 선택해주세요.
               </p>
               <div className="mt-2 space-y-1.5">
@@ -228,11 +309,11 @@ export default function NewReservationModal() {
                       'transition-colors'
                     )}
                   >
-                    <span className="text-[11px] font-medium text-charcoal">{candidate.name}</span>
-                    <span className="ml-1 text-[10px] text-charcoal-lighter">
+                    <span className="text-[12px] font-medium text-charcoal">{candidate.name}</span>
+                    <span className="ml-1 text-[12px] text-charcoal-lighter">
                       ({candidate.partySize}명 · {candidate.startTime}~{candidate.endTime})
                     </span>
-                    <span className="ml-1 text-[10px] text-primary">예약 변경</span>
+                    <span className="ml-1 text-[12px] text-primary">예약 변경</span>
                   </button>
                 ))}
               </div>
@@ -240,11 +321,18 @@ export default function NewReservationModal() {
                 <button
                   type="button"
                   onClick={handleClose}
-                  className="text-[11px] font-medium text-occupied hover:text-occupied/80 transition-colors"
+                  className="text-[12px] font-medium text-occupied hover:text-occupied/80 transition-colors"
                 >
                   예약 취소
                 </button>
               </div>
+            </div>
+          )}
+
+          {capacityError && (
+            <div className="mb-4 rounded-xl border border-occupied/30 bg-occupied/10 px-3 py-2.5">
+              <p className="text-sm font-semibold text-occupied">예약 인원 초과</p>
+              <p className="mt-0.5 text-[12px] text-charcoal-light">{capacityError}</p>
             </div>
           )}
 
@@ -261,6 +349,7 @@ export default function NewReservationModal() {
                 onChange={(e) => {
                   setName(e.target.value.toUpperCase())
                   if (duplicateCandidates.length > 0) setDuplicateCandidates([])
+                  if (capacityError) setCapacityError(null)
                 }}
                 placeholder="이름을 입력하세요"
                 className={cn(
@@ -286,6 +375,7 @@ export default function NewReservationModal() {
                   onClick={() => {
                     setPartySize(Math.max(1, partySize - 1))
                     if (duplicateCandidates.length > 0) setDuplicateCandidates([])
+                    if (capacityError) setCapacityError(null)
                   }}
                   className={cn(
                     'w-11 h-11 flex items-center justify-center rounded-xl',
@@ -303,8 +393,9 @@ export default function NewReservationModal() {
                 <button
                   type="button"
                   onClick={() => {
-                    setPartySize(Math.min(20, partySize + 1))
+                    setPartySize(Math.min(16, partySize + 1))
                     if (duplicateCandidates.length > 0) setDuplicateCandidates([])
+                    if (capacityError) setCapacityError(null)
                   }}
                   className={cn(
                     'w-11 h-11 flex items-center justify-center rounded-xl',
@@ -331,6 +422,7 @@ export default function NewReservationModal() {
                   onClick={() => {
                     handlePeriodChange('lunch')
                     if (duplicateCandidates.length > 0) setDuplicateCandidates([])
+                    if (capacityError) setCapacityError(null)
                   }}
                   className={cn(
                     'flex-1 inline-flex items-center justify-center gap-2',
@@ -342,13 +434,14 @@ export default function NewReservationModal() {
                   )}
                 >
                   <Sun size={16} />
-                  점심 (12:00~14:00)
+                  점심
                 </button>
                 <button
                   type="button"
                   onClick={() => {
                     handlePeriodChange('dinner')
                     if (duplicateCandidates.length > 0) setDuplicateCandidates([])
+                    if (capacityError) setCapacityError(null)
                   }}
                   className={cn(
                     'flex-1 inline-flex items-center justify-center gap-2',
@@ -360,19 +453,19 @@ export default function NewReservationModal() {
                   )}
                 >
                   <Moon size={16} />
-                  저녁 (19:00~21:30)
+                  저녁
                 </button>
               </div>
             </div>
 
             {/* 시작 시간 → 종료 시간 자동 계산 */}
             <div>
-              <label className="text-xs font-medium text-charcoal-light mb-1 block">
+              <label className="text-sm font-medium text-charcoal-light mb-1 block">
                 시작 시간 <span className="text-occupied">*</span>
-                <span className="text-charcoal-lighter ml-1">(1시간 30분 자동 배정)</span>
+                <span className="text-charcoal-lighter ml-1">(종료시간은 1시간~2시간 범위)</span>
               </label>
               <div className="rounded-xl border border-border bg-cream p-2">
-                <div className="grid grid-cols-4 gap-1.5 max-h-[128px] overflow-y-auto pr-1">
+                <div className="grid grid-cols-6 gap-1.5 max-h-[128px] overflow-y-auto pr-1">
                   {startTimeOptions.map((val) => (
                     <button
                       key={val}
@@ -380,9 +473,10 @@ export default function NewReservationModal() {
                       onClick={() => {
                         handleStartTimeChange(val)
                         if (duplicateCandidates.length > 0) setDuplicateCandidates([])
+                        if (capacityError) setCapacityError(null)
                       }}
                       className={cn(
-                        'py-1.5 rounded-lg text-[11px] font-semibold border transition-colors',
+                        'py-1.5 rounded-lg text-[12px] font-semibold border transition-colors',
                         startTime === val
                           ? 'bg-primary text-white border-primary'
                           : 'bg-surface text-charcoal border-border hover:bg-border'
@@ -392,21 +486,42 @@ export default function NewReservationModal() {
                     </button>
                   ))}
                 </div>
-                <div className="mt-2 pt-2 border-t border-border text-[11px] text-charcoal-light">
-                  종료 시간:
-                  <span className={cn('ml-1 font-semibold', endTime ? 'text-charcoal' : 'text-charcoal-lighter')}>
-                    {endTime || '-'}
-                  </span>
+                <div className="mt-2 pt-2 border-t border-border">
+                  <label className="text-[12px] font-medium text-charcoal-light">
+                    종료 시간 <span className="text-occupied">*</span>
+                  </label>
+                  <select
+                    value={endTime}
+                    onChange={(e) => {
+                      setEndTime(e.target.value)
+                      if (duplicateCandidates.length > 0) setDuplicateCandidates([])
+                      if (capacityError) setCapacityError(null)
+                    }}
+                    className="mt-1 w-full rounded-lg border border-border bg-surface px-2 py-1.5 text-[12px] text-charcoal focus:outline-none focus:border-primary/50"
+                  >
+                    {buildEndTimeOptions(startTime).length === 0 && <option value="">종료 시간 선택</option>}
+                    {buildEndTimeOptions(startTime).map((val) => (
+                      <option key={val} value={val}>{val}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="mt-1 text-[12px] text-charcoal-lighter">
+                  최대 수용 {maxCapacity}명
+                  {startTime && (
+                    <span className={cn('ml-1', concurrentAtSelectedStart > maxCapacity ? 'text-occupied font-semibold' : 'text-charcoal-light')}>
+                      · 선택시간 동시 인원 {concurrentAtSelectedStart}명
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
 
             {liveDuplicateCandidates.length > 0 && !isEditing && (
               <div className="rounded-xl border border-primary/25 bg-primary/5 px-3 py-2">
-                <p className="text-[11px] font-semibold text-primary">실시간 중복 후보</p>
+                <p className="text-[12px] font-semibold text-primary">실시간 중복 후보</p>
                 <div className="mt-1.5 space-y-1">
                   {liveDuplicateCandidates.map((candidate) => (
-                    <div key={`live-${candidate.id}`} className="text-[11px] text-charcoal">
+                    <div key={`live-${candidate.id}`} className="text-[12px] text-charcoal">
                       {candidate.name} ({candidate.partySize}명 · {candidate.startTime}~{candidate.endTime})
                     </div>
                   ))}
@@ -426,6 +541,7 @@ export default function NewReservationModal() {
                 onChange={(e) => {
                   handlePhoneChange(e.target.value)
                   if (duplicateCandidates.length > 0) setDuplicateCandidates([])
+                  if (capacityError) setCapacityError(null)
                 }}
                 placeholder="06 12 34 56 78"
                 className={cn(
@@ -449,6 +565,7 @@ export default function NewReservationModal() {
                 onChange={(e) => {
                   setNote(e.target.value)
                   if (duplicateCandidates.length > 0) setDuplicateCandidates([])
+                  if (capacityError) setCapacityError(null)
                 }}
                 placeholder="특이사항이 있으면 입력하세요"
                 rows={2}

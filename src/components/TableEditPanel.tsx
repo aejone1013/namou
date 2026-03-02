@@ -36,7 +36,7 @@ export default function TableEditPanel() {
     <div className="bg-surface overflow-hidden">
       {/* 헤더 */}
       <div className="px-3 py-2.5 border-b border-border bg-cream/50">
-        <p className="text-[11px] font-semibold text-charcoal">테이블 편집</p>
+        <p className="text-[12px] font-semibold text-charcoal">테이블 편집</p>
       </div>
 
       {/* 버튼 */}
@@ -46,7 +46,7 @@ export default function TableEditPanel() {
             onClick={() => addTable()}
             className={cn(
               'flex-1 inline-flex items-center justify-center gap-1',
-              'text-[11px] font-medium py-1.5 rounded-lg',
+              'text-[12px] font-medium py-1.5 rounded-lg',
               'bg-cream hover:bg-border text-charcoal-light',
               'transition-colors border border-border'
             )}
@@ -59,10 +59,10 @@ export default function TableEditPanel() {
       {/* 선택된 테이블 속성 */}
       {selectedTable ? (
         <div className="px-3 py-2.5 space-y-2.5">
-          <p className="text-[10px] text-charcoal-lighter">선택된 테이블</p>
+          <p className="text-[12px] text-charcoal-lighter">선택된 테이블</p>
 
           <div>
-            <label className="flex items-center gap-1 text-[10px] text-charcoal-light mb-0.5">
+            <label className="flex items-center gap-1 text-[12px] text-charcoal-light mb-0.5">
               <Tag size={10} /> 이름
             </label>
             <input
@@ -85,7 +85,7 @@ export default function TableEditPanel() {
                 if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
               }}
               className={cn(
-                'w-full px-2.5 py-1 text-xs rounded-lg',
+                'w-full px-2.5 py-1 text-sm rounded-lg',
                 'bg-cream border text-charcoal',
                 'focus:outline-none focus:ring-1',
                 labelError
@@ -118,7 +118,7 @@ export default function TableEditPanel() {
               }}
               className={cn(
                 'flex-1 inline-flex items-center justify-center gap-1',
-                'text-[11px] font-medium py-1.5 rounded-lg',
+                'text-[12px] font-medium py-1.5 rounded-lg',
                 'text-occupied bg-occupied-light hover:bg-occupied/20',
                 'transition-colors'
               )}
@@ -130,14 +130,14 @@ export default function TableEditPanel() {
         </div>
       ) : (
         <div className="px-3 py-4 text-center">
-          <p className="text-[10px] text-charcoal-lighter">테이블을 클릭하여 선택</p>
+          <p className="text-[12px] text-charcoal-lighter">테이블을 클릭하여 선택</p>
         </div>
       )}
 
       {/* 테이블 목록 */}
       <div className="px-3 py-2.5 border-t border-border">
         <div className="flex items-center justify-between mb-1.5">
-          <p className="text-[10px] text-charcoal-lighter">테이블 ({tables.length})</p>
+          <p className="text-[12px] text-charcoal-lighter">테이블 ({tables.length})</p>
           {selectedTableIds.length > 0 && (
             <button onClick={() => selectTable(null)} className="text-[9px] text-charcoal-lighter hover:text-charcoal">
               해제
@@ -162,7 +162,7 @@ export default function TableEditPanel() {
                   }
                 }}
                 className={cn(
-                  'text-[10px] font-medium px-1.5 py-0.5 rounded-md',
+                  'text-[12px] font-medium px-1.5 py-0.5 rounded-md',
                   'transition-colors inline-flex items-center gap-0.5',
                   isSelected ? 'bg-primary text-white' : 'bg-cream text-charcoal-light hover:bg-border'
                 )}

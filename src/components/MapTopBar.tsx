@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Users, Sun, Moon, Clock, Settings, Pencil, RotateCcw, Trash2 } from 'lucide-react'
+import { Users, Sun, Moon, Clock, Settings, Pencil, RotateCcw, Trash2, LogOut } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useReservationStore } from '@/store/useReservationStore'
 import { useToastStore } from '@/store/useToastStore'
@@ -51,14 +51,23 @@ export default function MapTopBar({ showTimeTable, onToggleTimeTable }: MapTopBa
     return () => document.removeEventListener('mousedown', onClickOutside)
   }, [])
 
+  const handleQuitApp = () => {
+    if (!window.confirm('앱을 종료할까요?')) return
+    if (window.namouDesktop?.quitApp) {
+      window.namouDesktop.quitApp()
+      return
+    }
+    window.close()
+  }
+
   return (
-    <div className="relative z-[60] overflow-visible flex items-center justify-between px-4 py-2 bg-surface/70 backdrop-blur-sm border-b border-border">
+    <div className="relative z-[60] overflow-visible h-11 flex items-center justify-between px-4 bg-surface/70 backdrop-blur-sm border-b border-border">
       <div className="flex items-center gap-2.5 min-w-0">
         <div className="flex items-center gap-1 bg-cream rounded-lg p-0.5">
           <button
             onClick={() => setActiveSession('lunch')}
             className={cn(
-              'inline-flex items-center gap-1 text-[11px] font-medium px-2.5 py-1 rounded-md transition-all duration-150',
+              'inline-flex items-center gap-1 text-[12px] font-medium px-2.5 py-1 rounded-md transition-all duration-150',
               activeSession === 'lunch'
                 ? 'bg-[#F3D17A] text-[#3A2412] border border-[#D0A642] shadow-sm'
                 : 'text-charcoal-lighter hover:text-charcoal-light hover:bg-surface/60'
@@ -70,7 +79,7 @@ export default function MapTopBar({ showTimeTable, onToggleTimeTable }: MapTopBa
           <button
             onClick={() => setActiveSession('dinner')}
             className={cn(
-              'inline-flex items-center gap-1 text-[11px] font-medium px-2.5 py-1 rounded-md transition-all duration-150',
+              'inline-flex items-center gap-1 text-[12px] font-medium px-2.5 py-1 rounded-md transition-all duration-150',
               activeSession === 'dinner'
                 ? 'bg-[#5A6FAE] text-white border border-[#4A5F9A] shadow-sm'
                 : 'text-charcoal-lighter hover:text-charcoal-light hover:bg-surface/60'
@@ -85,14 +94,14 @@ export default function MapTopBar({ showTimeTable, onToggleTimeTable }: MapTopBa
       <div className="flex items-center gap-2 ml-4">
         <div className="flex items-center gap-1.5">
           <Users size={14} className="text-primary" />
-          <span className="text-xs font-semibold text-charcoal">{occupiedSeats}</span>
-          <span className="text-xs text-charcoal-lighter">/</span>
-          <span className="text-xs text-charcoal-light">{totalSeats}</span>
-          <span className="text-[10px] text-charcoal-lighter">좌석</span>
+          <span className="text-sm font-semibold text-charcoal">{occupiedSeats}</span>
+          <span className="text-sm text-charcoal-lighter">/</span>
+          <span className="text-sm text-charcoal-light">{totalSeats}</span>
+          <span className="text-[12px] text-charcoal-lighter">좌석</span>
         </div>
 
         {!isEditMode && (
-          <div className="flex items-center gap-2 text-[11px] ml-1 mr-1">
+          <div className="flex items-center gap-2 text-[12px] ml-1 mr-1">
             <span className="inline-flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-available" />
               {tables.filter((t) => t.status === 'available').length}
@@ -107,7 +116,7 @@ export default function MapTopBar({ showTimeTable, onToggleTimeTable }: MapTopBa
         <button
           onClick={toggleEditMode}
           className={cn(
-            'inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition-colors',
+            'inline-flex items-center gap-1 text-[12px] font-semibold px-2.5 py-1 rounded-lg border transition-colors',
             isEditMode
               ? 'bg-primary text-white border-primary'
               : 'bg-cream text-charcoal border-border hover:bg-border'
@@ -125,7 +134,7 @@ export default function MapTopBar({ showTimeTable, onToggleTimeTable }: MapTopBa
               setConfirmAction(null)
             }}
             className={cn(
-              'inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition-colors',
+              'inline-flex items-center gap-1 text-[12px] font-semibold px-2.5 py-1 rounded-lg border transition-colors',
               isSettingsOpen
                 ? 'bg-primary text-white border-primary'
                 : 'bg-cream text-charcoal border-border hover:bg-border'
@@ -151,7 +160,7 @@ export default function MapTopBar({ showTimeTable, onToggleTimeTable }: MapTopBa
                   }
                   setConfirmAction('reservations')
                 }}
-                className="w-full inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-1.5 rounded-lg bg-cream hover:bg-border text-charcoal transition-colors"
+                className="w-full inline-flex items-center gap-1.5 text-[12px] font-semibold px-2 py-1.5 rounded-lg bg-cream hover:bg-border text-charcoal transition-colors"
               >
                 <RotateCcw size={12} />
                 {confirmAction === 'reservations' ? '한 번 더 누르면 예약 초기화' : '예약 초기화'}
@@ -168,10 +177,17 @@ export default function MapTopBar({ showTimeTable, onToggleTimeTable }: MapTopBa
                   }
                   setConfirmAction('setup')
                 }}
-                className="w-full inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-1.5 rounded-lg bg-occupied-light hover:bg-occupied/20 text-occupied transition-colors"
+                className="w-full inline-flex items-center gap-1.5 text-[12px] font-semibold px-2 py-1.5 rounded-lg bg-occupied-light hover:bg-occupied/20 text-occupied transition-colors"
               >
                 <Trash2 size={12} />
                 {confirmAction === 'setup' ? '한 번 더 누르면 설정 초기화' : '설정 초기화'}
+              </button>
+              <button
+                onClick={handleQuitApp}
+                className="w-full inline-flex items-center gap-1.5 text-[12px] font-semibold px-2 py-1.5 rounded-lg bg-charcoal/10 hover:bg-charcoal/20 text-charcoal transition-colors"
+              >
+                <LogOut size={12} />
+                앱 나가기
               </button>
               </div>
             </div>

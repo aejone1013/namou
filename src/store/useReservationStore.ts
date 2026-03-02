@@ -9,7 +9,7 @@ import {
   TABLE_WIDTH, SNAP_SIZE, snapToGrid, getCurrentTimeHHMM,
   getTableNumber, isContiguousRange, getMergeLabel, getMergedTableHeight, compareTableLabel,
   TABLE_BASE_HEIGHT, TABLE_FIXED_SEATS, TABLES_PER_COLUMN,
-  getMergeGroup, createDefaultTables, timeToMinutes,
+  createDefaultTables, timeToMinutes,
 } from '@/data/dummy'
 
 const CANVAS_SIZE = TABLES_PER_COLUMN * TABLE_BASE_HEIGHT  // 648
@@ -65,7 +65,8 @@ interface ReservationStore {
   seatWithAutoMerge: (reservationId: string, tableId: string) => void
   seatWithSelectedMerge: (reservationId: string, tableId: string, mergeTableIds: string[]) => void
   clearTable: (tableId: string) => void
-  walkInTable: (tableId: string, partySize: number, name?: string) => void
+  walkInTable: (tableId: string, partySize: number, name?: string, startTime?: string, endTime?: string) => void
+  walkInWithSelectedMerge: (tableId: string, partySize: number, name: string | undefined, mergeTableIds: string[], startTime?: string, endTime?: string) => void
   moveToTable: (fromTableId: string, toTableId: string) => void
   setNextBooking: (tableId: string, reservationId: string) => void
   setNextBookingMulti: (tableIds: string[], reservationId: string, targetLabel?: string) => void
@@ -147,6 +148,54 @@ function setPlannedBookings(ts: TableSessionState | undefined, planned: NextBook
     currentTeam: ts?.currentTeam ?? null,
     nextBooking: sorted[0] ?? null,
     plannedBookings: sorted,
+  }
+}
+
+function clearCurrentTeamByReservation(
+  tableStates: Record<string, TableSessionState>,
+  reservationId: string
+): Record<string, TableSessionState> {
+  const next = { ...tableStates }
+  for (const [tableId, ts] of Object.entries(next)) {
+    if (ts.currentTeam?.reservationId !== reservationId) continue
+    const planned = getPlannedBookings(ts)
+    next[tableId] = setPlannedBookings(
+      {
+        ...ts,
+        status: 'available',
+        currentTeam: null,
+      },
+      planned
+    )
+  }
+  return next
+}
+
+function isReservationCurrentlySeated(
+  tableStates: Record<string, TableSessionState>,
+  reservationId: string
+): boolean {
+  for (const ts of Object.values(tableStates)) {
+    if (ts.currentTeam?.reservationId === reservationId) return true
+  }
+  return false
+}
+
+function buildAutoSeatQueue(
+  planned: NextBooking[],
+  tableStates: Record<string, TableSessionState>
+): NextBooking[] {
+  return planned.filter((b) => !isReservationCurrentlySeated(tableStates, b.reservationId))
+}
+
+function isSameColumn(a: TableInfo | MergedOrigin, b: TableInfo | MergedOrigin): boolean {
+  return Math.abs(a.x - b.x) <= Math.floor(TABLE_WIDTH / 2)
+}
+
+function getMergedAnchor(allToMerge: Array<TableInfo | MergedOrigin>): { x: number; y: number } {
+  return {
+    x: Math.min(...allToMerge.map((t) => t.x)),
+    y: Math.min(...allToMerge.map((t) => t.y)),
   }
 }
 
@@ -284,9 +333,8 @@ export const useReservationStore = create<ReservationStore>()(
               if (ts.currentTeam?.reservationId === id) {
                 updated = { ...updated, status: 'available' as const, currentTeam: null }
               }
-              if (ts.nextBooking?.reservationId === id) {
-                updated = { ...updated, nextBooking: null }
-              }
+              const plannedWithoutReservation = getPlannedBookings(updated).filter((b) => b.reservationId !== id)
+              updated = setPlannedBookings(updated, plannedWithoutReservation)
               newTableStates[tableId] = updated
             }
             const cleaned = autoSplitOrphanMerges(newTableStates, oldSd.merges)
@@ -306,6 +354,8 @@ export const useReservationStore = create<ReservationStore>()(
           // Period unchanged: update table state refs in old session
           const sd = state.sessionData[oldSession]
           const newTableStates = { ...sd.tableStates }
+          let newMerges = [...sd.merges]
+          let nextTableId = reservation.tableId
 
           for (const tableId of Object.keys(newTableStates)) {
             const ts = newTableStates[tableId]
@@ -320,26 +370,126 @@ export const useReservationStore = create<ReservationStore>()(
                 },
               }
             }
-            if (ts.nextBooking?.reservationId === id) {
-              updated = {
-                ...updated,
-                nextBooking: {
-                  ...ts.nextBooking!,
-                  name: data.name ?? reservation.name,
-                  partySize: data.partySize ?? reservation.partySize,
-                  startTime: data.startTime ?? reservation.startTime,
-                  endTime: data.endTime ?? reservation.endTime,
-                },
-              }
+            const planned = getPlannedBookings(updated)
+            const hasPlannedRef = planned.some((b) => b.reservationId === id)
+            if (hasPlannedRef) {
+              updated = setPlannedBookings(
+                updated,
+                planned.map((b) =>
+                  b.reservationId === id
+                    ? {
+                        ...b,
+                        name: data.name ?? reservation.name,
+                        partySize: data.partySize ?? reservation.partySize,
+                        startTime: data.startTime ?? reservation.startTime,
+                        endTime: data.endTime ?? reservation.endTime,
+                      }
+                    : b
+                )
+              )
             }
             newTableStates[tableId] = updated
           }
 
+          const nextPartySize = data.partySize ?? reservation.partySize
+          const seatedMerge = reservation.status === 'seated' && reservation.tableId
+            ? newMerges.find((m) => m.mergedId === reservation.tableId)
+            : undefined
+          if (seatedMerge && nextPartySize >= 1) {
+            const mergedState = newTableStates[seatedMerge.mergedId]
+            const target = seatedMerge.mergedFrom
+              .slice()
+              .sort((a, b) => {
+                if (a.seats !== b.seats) return a.seats - b.seats
+                return compareTableLabel(a.label, b.label)
+              })
+              .find((o) => o.seats >= nextPartySize)
+            if (mergedState?.currentTeam?.reservationId === id && target) {
+              const remainingPlanned = getPlannedBookings(mergedState).filter((b) => b.reservationId !== id)
+              delete newTableStates[seatedMerge.mergedId]
+              for (const origin of seatedMerge.mergedFrom) {
+                if (origin.id === target.id) {
+                  newTableStates[origin.id] = setPlannedBookings(
+                    {
+                      status: 'occupied',
+                      currentTeam: {
+                        reservationId: id,
+                        name: data.name ?? reservation.name,
+                        partySize: nextPartySize,
+                        seatedAt: mergedState.currentTeam.seatedAt,
+                        ...(mergedState.currentTeam.startTime ? { startTime: mergedState.currentTeam.startTime } : {}),
+                        ...(mergedState.currentTeam.endTime ? { endTime: mergedState.currentTeam.endTime } : {}),
+                      },
+                      nextBooking: null,
+                    },
+                    remainingPlanned
+                  )
+                  nextTableId = target.id
+                } else {
+                  newTableStates[origin.id] = setPlannedBookings(
+                    { status: 'available', currentTeam: null, nextBooking: null },
+                    []
+                  )
+                }
+              }
+              newMerges = newMerges.filter((m) => m.mergedId !== seatedMerge.mergedId)
+            }
+          }
+
+          // Waiting assignment shrink: if a previously merged/scope booking now fits one table,
+          // auto-reduce scope to a single table.
+          if (reservation.status === 'waiting') {
+            const tableIdsWithBooking = Object.entries(newTableStates)
+              .filter(([, ts]) => getPlannedBookings(ts).some((b) => b.reservationId === id))
+              .map(([tableId]) => tableId)
+            const allBookings = Object.values(newTableStates)
+              .flatMap((ts) => getPlannedBookings(ts))
+              .filter((b) => b.reservationId === id)
+            const scopeIdsFromBooking = [...new Set(
+              allBookings.flatMap((b) => (b.scopeTableIds && b.scopeTableIds.length > 0 ? b.scopeTableIds : []))
+            )]
+            const allScopeIds = [...new Set([...tableIdsWithBooking, ...scopeIdsFromBooking])]
+            if (allScopeIds.length >= 2) {
+              const sample = allBookings[0]
+              const scopeIds = allScopeIds
+              const scopeTables = state.tables
+                .filter((t) => scopeIds.includes(t.id))
+                .sort((a, b) => compareTableLabel(a.label, b.label))
+              const preferredByTargetLabel = sample?.targetLabel
+                ? scopeTables.find((t) => t.label === sample.targetLabel)
+                : undefined
+              const singleTarget = preferredByTargetLabel ?? scopeTables.find((t) => t.seats >= nextPartySize)
+
+              if (singleTarget && singleTarget.seats >= nextPartySize) {
+                for (const tableId of allScopeIds) {
+                  const planned = getPlannedBookings(newTableStates[tableId]).filter((b) => b.reservationId !== id)
+                  newTableStates[tableId] = setPlannedBookings(newTableStates[tableId], planned)
+                }
+
+                const reassigned: NextBooking = {
+                  reservationId: id,
+                  name: data.name ?? reservation.name,
+                  partySize: nextPartySize,
+                  startTime: data.startTime ?? reservation.startTime,
+                  endTime: data.endTime ?? reservation.endTime,
+                  scopeTableIds: [singleTarget.id],
+                  targetLabel: singleTarget.label,
+                }
+                const targetPlanned = getPlannedBookings(newTableStates[singleTarget.id])
+                  .filter((b) => b.reservationId !== id)
+                targetPlanned.push(reassigned)
+                newTableStates[singleTarget.id] = setPlannedBookings(newTableStates[singleTarget.id], targetPlanned)
+              }
+            }
+          }
+
           return {
-            reservations: state.reservations.map((r) => (r.id === id ? { ...r, ...data } : r)),
+            reservations: state.reservations.map((r) =>
+              r.id === id ? { ...r, ...data, ...(nextTableId ? { tableId: nextTableId } : {}) } : r
+            ),
             sessionData: {
               ...state.sessionData,
-              [oldSession]: { ...sd, tableStates: newTableStates },
+              [oldSession]: { ...sd, tableStates: newTableStates, merges: newMerges },
             },
             isModalOpen: false,
             editingReservation: null,
@@ -368,9 +518,8 @@ export const useReservationStore = create<ReservationStore>()(
             if (ts.currentTeam?.reservationId === id) {
               updated = { ...updated, status: 'available' as const, currentTeam: null }
             }
-            if (ts.nextBooking?.reservationId === id) {
-              updated = { ...updated, nextBooking: null }
-            }
+            const plannedWithoutReservation = getPlannedBookings(updated).filter((b) => b.reservationId !== id)
+            updated = setPlannedBookings(updated, plannedWithoutReservation)
             newTableStates[tableId] = updated
           }
 
@@ -392,7 +541,7 @@ export const useReservationStore = create<ReservationStore>()(
 
           const session = reservation.period
           const sd = state.sessionData[session]
-          const newTableStates = { ...sd.tableStates }
+          let newTableStates = { ...sd.tableStates }
 
           // Clear from previous table
           const prevTableId = reservation.tableId
@@ -403,6 +552,8 @@ export const useReservationStore = create<ReservationStore>()(
               currentTeam: null,
             }
           }
+          // Safety: clear any stale duplicate occupancy for this reservation.
+          newTableStates = clearCurrentTeamByReservation(newTableStates, reservationId)
 
           newTableStates[tableId] = {
             status: 'occupied' as const,
@@ -442,11 +593,12 @@ export const useReservationStore = create<ReservationStore>()(
         const simpleSet = (targetTableId: string) => {
           set((s) => {
             const sd2 = s.sessionData[session]
-            const newTableStates = { ...sd2.tableStates }
+            let newTableStates = { ...sd2.tableStates }
             const prevTableId = reservation.tableId
             if (prevTableId && newTableStates[prevTableId]) {
               newTableStates[prevTableId] = { ...newTableStates[prevTableId], status: 'available' as const, currentTeam: null }
             }
+            newTableStates = clearCurrentTeamByReservation(newTableStates, reservationId)
             newTableStates[targetTableId] = {
               status: 'occupied' as const,
               currentTeam: {
@@ -476,14 +628,12 @@ export const useReservationStore = create<ReservationStore>()(
           return
         }
 
-        // Need more seats — find adjacent available base tables (same column only)
+        // Need more seats — find adjacent available base tables in the same column.
         const baseNum = getTableNumber(table.label)
-        const group = getMergeGroup(baseNum)
         const available = effectiveTables.filter((t) => {
           const status = sd.tableStates[t.id]?.status ?? 'available'
-          const tNum = getTableNumber(t.label)
           return baseTableIds.has(t.id) && status === 'available' && t.id !== tableId
-            && (group ? group.includes(tNum) : true)
+            && isSameColumn(t, table)
         })
 
         const mergePlan = planAdjacentMerge(
@@ -500,10 +650,7 @@ export const useReservationStore = create<ReservationStore>()(
 
         // Merge all selected tables
         const allToMerge = [table, ...toMerge]
-        const firstTable = allToMerge.reduce((best, t) =>
-          getTableNumber(t.label) < getTableNumber(best.label) ? t : best
-        )
-        const minY = Math.min(...allToMerge.map(t => t.y))
+        const anchor = getMergedAnchor(allToMerge)
         const totalSeats = allToMerge.reduce((sum, t) => sum + t.seats, 0)
         const mergedLabel = getMergeLabel(allNums)
         const origins: MergedOrigin[] = allToMerge.map((t) => ({
@@ -525,13 +672,14 @@ export const useReservationStore = create<ReservationStore>()(
             mergedFrom: origins,
             label: mergedLabel,
             seats: totalSeats,
-            x: firstTable.x,
-            y: minY,
+            x: anchor.x,
+            y: anchor.y,
             width: TABLE_WIDTH,
             height: getMergedTableHeight(allToMerge.length),
           }
 
-          const newTableStates = { ...sd2.tableStates }
+          let newTableStates = { ...sd2.tableStates }
+          newTableStates = clearCurrentTeamByReservation(newTableStates, reservationId)
           const preservedPlanned = mergeFuturePlannedBookingsForMergedSeat(
             Object.fromEntries(allToMerge.map((t) => [t.id, getPlannedBookings(newTableStates[t.id])])),
             allToMerge.map((t) => t.id),
@@ -580,16 +728,14 @@ export const useReservationStore = create<ReservationStore>()(
         if (table.status !== 'available' || selectedTables.some((t) => t.status !== 'available')) return
 
         const allToMerge = [table, ...selectedTables.filter((t) => t.id !== table.id)]
+        if (!allToMerge.every((t) => isSameColumn(t, table))) return
         const allNums = allToMerge.map((t) => getTableNumber(t.label))
         if (!isContiguousRange(allNums)) return
 
         const totalSeats = allToMerge.reduce((sum, t) => sum + t.seats, 0)
         if (totalSeats < reservation.partySize) return
 
-        const firstTable = allToMerge.reduce((best, t) =>
-          getTableNumber(t.label) < getTableNumber(best.label) ? t : best
-        )
-        const minY = Math.min(...allToMerge.map((t) => t.y))
+        const anchor = getMergedAnchor(allToMerge)
         const mergedLabel = getMergeLabel(allNums)
         const origins: MergedOrigin[] = allToMerge.map((t) => ({
           id: t.id,
@@ -610,13 +756,14 @@ export const useReservationStore = create<ReservationStore>()(
             mergedFrom: origins,
             label: mergedLabel,
             seats: totalSeats,
-            x: firstTable.x,
-            y: minY,
+            x: anchor.x,
+            y: anchor.y,
             width: TABLE_WIDTH,
             height: getMergedTableHeight(allToMerge.length),
           }
 
-          const newTableStates = { ...sd2.tableStates }
+          let newTableStates = { ...sd2.tableStates }
+          newTableStates = clearCurrentTeamByReservation(newTableStates, reservationId)
           const preservedPlanned = mergeFuturePlannedBookingsForMergedSeat(
             Object.fromEntries(allToMerge.map((t) => [t.id, getPlannedBookings(newTableStates[t.id])])),
             allToMerge.map((t) => t.id),
@@ -677,11 +824,6 @@ export const useReservationStore = create<ReservationStore>()(
               reservationId
             )
           })()
-          const displayedNext = sourcePlanned[0] ?? tableState?.nextBooking ?? null
-          const remainingPlanned = displayedNext
-            ? sourcePlanned.filter((b) => b.reservationId !== displayedNext.reservationId)
-            : sourcePlanned
-
           if (merge) {
             // Auto-split
             const newMerges = sd.merges.filter((m) => m.mergedId !== tableId)
@@ -693,6 +835,9 @@ export const useReservationStore = create<ReservationStore>()(
               newTableStates[origin.id] = { status: 'available', currentTeam: null, nextBooking: preserved }
             }
 
+            const autoSeatPool = buildAutoSeatQueue(sourcePlanned, newTableStates)
+            const displayedNext = autoSeatPool[0] ?? null
+            const remainingPlanned = displayedNext ? autoSeatPool.slice(1) : autoSeatPool
             const nb = displayedNext
             if (nb) {
               const nbReservation = state.reservations.find((r) => r.id === nb.reservationId)
@@ -705,7 +850,7 @@ export const useReservationStore = create<ReservationStore>()(
                 // If multiple planned bookings start at the same earliest time and have explicit, disjoint scopes
                 // (e.g. B:T1-2 and C:T3), auto-seat them together on split.
                 const sameStart = selectSimultaneousScopedAutoSeatBookings(
-                  sourcePlanned,
+                  autoSeatPool,
                   restoredInfos.map((t) => t.id)
                 )
                 if (sameStart.length >= 2) {
@@ -748,8 +893,7 @@ export const useReservationStore = create<ReservationStore>()(
                           [...state.tables, ...nextMerges.map((m) => ({ id: m.mergedId }))],
                           't'
                         )
-                        const first = scopedInfos[0]
-                        const minScopedY = Math.min(...scopedInfos.map((t) => t.y))
+                        const scopedAnchor = getMergedAnchor(scopedInfos)
                         const laterPlannedForScope = getLaterForScope(scopeIds)
                         for (const t of scopedInfos) delete newTableStates[t.id]
                         newTableStates[mergedSeatId] = setPlannedBookings({
@@ -767,8 +911,8 @@ export const useReservationStore = create<ReservationStore>()(
                           mergedFrom: scopedInfos.map((t) => ({ ...t })),
                           label: getMergeLabel(nums),
                           seats: totalScopedSeats,
-                          x: first.x,
-                          y: minScopedY,
+                          x: scopedAnchor.x,
+                          y: scopedAnchor.y,
                           width: TABLE_WIDTH,
                           height: getMergedTableHeight(scopedInfos.length),
                         })
@@ -874,10 +1018,7 @@ export const useReservationStore = create<ReservationStore>()(
                     [...state.tables, ...newMerges.map((m) => ({ id: m.mergedId }))],
                     't'
                   )
-                  const firstT = mergeTargets.reduce((best, t) =>
-                    getTableNumber(t.label) < getTableNumber(best.label) ? t : best
-                  )
-                  const reMergeMinY = Math.min(...mergeTargets.map(t => t.y))
+                  const reMergeAnchor = getMergedAnchor(mergeTargets)
                   const totalSeats = mergeTargets.reduce((sum, t) => sum + t.seats, 0)
 
                   const reMerge: MergeInfo = {
@@ -888,8 +1029,8 @@ export const useReservationStore = create<ReservationStore>()(
                     })),
                     label: getMergeLabel(bestCombo),
                     seats: totalSeats,
-                    x: firstT.x,
-                    y: reMergeMinY,
+                    x: reMergeAnchor.x,
+                    y: reMergeAnchor.y,
                     width: TABLE_WIDTH,
                     height: getMergedTableHeight(mergeTargets.length),
                   }
@@ -962,7 +1103,9 @@ export const useReservationStore = create<ReservationStore>()(
 
           // Non-merged table
           const newTableStates = { ...sd.tableStates }
-          const nb = displayedNext
+          const autoSeatPool = buildAutoSeatQueue(sourcePlanned, newTableStates)
+          const nb = autoSeatPool[0] ?? null
+          const remainingPlanned = nb ? autoSeatPool.slice(1) : autoSeatPool
 
           if (nb) {
             const nbReservation = state.reservations.find((r) => r.id === nb.reservationId)
@@ -1021,29 +1164,236 @@ export const useReservationStore = create<ReservationStore>()(
           }
         }),
 
-      walkInTable: (tableId, partySize, name) =>
+      walkInTable: (tableId, partySize, name, startTime, endTime) =>
         set((state) => {
           const session = state.activeSession
           const sd = state.sessionData[session]
+          if (partySize < 2) return state
           const status = sd.tableStates[tableId]?.status ?? 'available'
           if (status !== 'available') return state
 
+          const effectiveTables = state.getEffectiveTables()
+          const table = effectiveTables.find((t) => t.id === tableId)
+          if (!table) return state
+
           const displayName = name || '워크인'
           const newTableStates = { ...sd.tableStates }
-          newTableStates[tableId] = {
-            status: 'occupied' as const,
-            currentTeam: {
-              name: displayName,
-              partySize,
-              seatedAt: getCurrentTimeHHMM(),
-            },
-            nextBooking: sd.tableStates[tableId]?.nextBooking ?? null,
+
+          if (partySize <= table.seats) {
+            newTableStates[tableId] = {
+              status: 'occupied' as const,
+              currentTeam: {
+                name: displayName,
+                partySize,
+                seatedAt: getCurrentTimeHHMM(),
+                ...(startTime ? { startTime } : {}),
+                ...(endTime ? { endTime } : {}),
+              },
+              nextBooking: sd.tableStates[tableId]?.nextBooking ?? null,
+            }
+            newTableStates[tableId] = setPlannedBookings(
+              newTableStates[tableId],
+              getPlannedBookings(sd.tableStates[tableId])
+            )
+
+            return {
+              sessionData: {
+                ...state.sessionData,
+                [session]: { ...sd, tableStates: newTableStates },
+              },
+            }
           }
+
+          const baseTableIds = new Set(state.tables.map((t) => t.id))
+          if (!baseTableIds.has(tableId)) return state
+
+          const baseNum = getTableNumber(table.label)
+          const allAvailableBaseCandidates = effectiveTables
+            .filter((t) => t.id !== table.id)
+            .filter((t) => baseTableIds.has(t.id))
+            .filter((t) => (sd.tableStates[t.id]?.status ?? 'available') === 'available')
+            .filter((t) => isSameColumn(t, table))
+          const groupedAvailableBaseCandidates = allAvailableBaseCandidates
+            .slice()
+
+          let selectedMergeTables: TableInfo[] = []
+          let mergeNums = [baseNum]
+          const adjacentPlan = planAdjacentMerge(
+            baseNum,
+            table.seats,
+            partySize,
+            groupedAvailableBaseCandidates.map((t) => ({ id: t.id, num: getTableNumber(t.label), seats: t.seats }))
+          )
+
+          if (adjacentPlan) {
+            selectedMergeTables = groupedAvailableBaseCandidates.filter((t) => adjacentPlan.selectedIds.includes(t.id))
+            mergeNums = adjacentPlan.selectedNums
+          } else {
+            const requiredExtraSeats = partySize - table.seats
+            const fallbackCandidates = allAvailableBaseCandidates
+              .slice()
+              .sort((a, b) => {
+                const aDist = Math.abs(a.x - table.x) + Math.abs(a.y - table.y)
+                const bDist = Math.abs(b.x - table.x) + Math.abs(b.y - table.y)
+                if (aDist !== bDist) return aDist - bDist
+                if (a.seats !== b.seats) return a.seats - b.seats
+                return compareTableLabel(a.label, b.label)
+              })
+
+            let extraSeats = 0
+            for (const candidate of fallbackCandidates) {
+              selectedMergeTables.push(candidate)
+              extraSeats += candidate.seats
+              if (extraSeats >= requiredExtraSeats) break
+            }
+            if (extraSeats < requiredExtraSeats) return state
+            mergeNums = [baseNum, ...selectedMergeTables.map((t) => getTableNumber(t.label))]
+          }
+
+          const allToMerge = [table, ...selectedMergeTables]
+          const totalSeats = allToMerge.reduce((sum, t) => sum + t.seats, 0)
+          if (totalSeats < partySize) return state
+
+          const anchor = getMergedAnchor(allToMerge)
+          const mergedLabel = isContiguousRange(mergeNums)
+            ? getMergeLabel(mergeNums)
+            : allToMerge.map((t) => t.label).sort(compareTableLabel).join('+')
+
+          const mergedId = getNextId(allUsedIds(state.tables, state.sessionData), 't')
+          const mergedOrigins: MergedOrigin[] = allToMerge.map((t) => ({
+            id: t.id,
+            label: t.label,
+            seats: t.seats,
+            x: t.x,
+            y: t.y,
+            width: t.width,
+            height: t.height,
+          }))
+          const preservedPlanned = mergeFuturePlannedBookingsForMergedSeat(
+            Object.fromEntries(allToMerge.map((t) => [t.id, getPlannedBookings(newTableStates[t.id])])),
+            allToMerge.map((t) => t.id)
+          )
+
+          for (const t of allToMerge) delete newTableStates[t.id]
+          newTableStates[mergedId] = setPlannedBookings(
+            {
+              status: 'occupied',
+              currentTeam: {
+                name: displayName,
+                partySize,
+                seatedAt: getCurrentTimeHHMM(),
+                ...(startTime ? { startTime } : {}),
+                ...(endTime ? { endTime } : {}),
+              },
+              nextBooking: null,
+            },
+            preservedPlanned
+          )
 
           return {
             sessionData: {
               ...state.sessionData,
-              [session]: { ...sd, tableStates: newTableStates },
+              [session]: {
+                tableStates: newTableStates,
+                merges: [
+                  ...sd.merges,
+                  {
+                    mergedId,
+                    mergedFrom: mergedOrigins,
+                    label: mergedLabel,
+                    seats: totalSeats,
+                    x: anchor.x,
+                    y: anchor.y,
+                    width: TABLE_WIDTH,
+                    height: getMergedTableHeight(allToMerge.length),
+                  },
+                ],
+              },
+            },
+          }
+        }),
+
+      walkInWithSelectedMerge: (tableId, partySize, name, mergeTableIds, startTime, endTime) =>
+        set((state) => {
+          const session = state.activeSession
+          const sd = state.sessionData[session]
+          if (partySize < 2) return state
+          const status = sd.tableStates[tableId]?.status ?? 'available'
+          if (status !== 'available') return state
+
+          const effectiveTables = state.getEffectiveTables()
+          const table = effectiveTables.find((t) => t.id === tableId)
+          if (!table) return state
+          const baseTableIds = new Set(state.tables.map((t) => t.id))
+          if (!baseTableIds.has(tableId)) return state
+
+          const selectedTables = effectiveTables.filter((t) => mergeTableIds.includes(t.id))
+          if (selectedTables.length !== mergeTableIds.length) return state
+          if (selectedTables.some((t) => !baseTableIds.has(t.id))) return state
+          if (selectedTables.some((t) => (sd.tableStates[t.id]?.status ?? 'available') !== 'available')) return state
+
+          const allToMerge = [table, ...selectedTables.filter((t) => t.id !== table.id)]
+          if (!allToMerge.every((t) => isSameColumn(t, table))) return state
+          const totalSeats = allToMerge.reduce((sum, t) => sum + t.seats, 0)
+          if (totalSeats < partySize) return state
+
+          const displayName = name || '워크인'
+          const mergeNums = allToMerge.map((t) => getTableNumber(t.label))
+          const mergedLabel = isContiguousRange(mergeNums)
+            ? getMergeLabel(mergeNums)
+            : allToMerge.map((t) => t.label).sort(compareTableLabel).join('+')
+          const anchor = getMergedAnchor(allToMerge)
+          const mergedId = getNextId(allUsedIds(state.tables, state.sessionData), 't')
+          const mergedOrigins: MergedOrigin[] = allToMerge.map((t) => ({
+            id: t.id,
+            label: t.label,
+            seats: t.seats,
+            x: t.x,
+            y: t.y,
+            width: t.width,
+            height: t.height,
+          }))
+
+          const newTableStates = { ...sd.tableStates }
+          const preservedPlanned = mergeFuturePlannedBookingsForMergedSeat(
+            Object.fromEntries(allToMerge.map((t) => [t.id, getPlannedBookings(newTableStates[t.id])])),
+            allToMerge.map((t) => t.id)
+          )
+          for (const t of allToMerge) delete newTableStates[t.id]
+          newTableStates[mergedId] = setPlannedBookings(
+            {
+              status: 'occupied',
+              currentTeam: {
+                name: displayName,
+                partySize,
+                seatedAt: getCurrentTimeHHMM(),
+                ...(startTime ? { startTime } : {}),
+                ...(endTime ? { endTime } : {}),
+              },
+              nextBooking: null,
+            },
+            preservedPlanned
+          )
+
+          return {
+            sessionData: {
+              ...state.sessionData,
+              [session]: {
+                tableStates: newTableStates,
+                merges: [
+                  ...sd.merges,
+                  {
+                    mergedId,
+                    mergedFrom: mergedOrigins,
+                    label: mergedLabel,
+                    seats: totalSeats,
+                    x: anchor.x,
+                    y: anchor.y,
+                    width: TABLE_WIDTH,
+                    height: getMergedTableHeight(allToMerge.length),
+                  },
+                ],
+              },
             },
           }
         }),
@@ -1072,12 +1422,10 @@ export const useReservationStore = create<ReservationStore>()(
               fromMerge ? fromMerge.mergedFrom.map((o) => o.id) : [fromTableId]
             )
             const targetNum = getTableNumber(baseTable.label)
-            const group = getMergeGroup(targetNum)
 
             const availableBaseCandidates = effectiveTables.filter((t) => {
               if (!baseTableIds.has(t.id) || t.id === toTableId) return false
-              const tNum = getTableNumber(t.label)
-              if (group && !group.includes(tNum)) return false
+              if (!isSameColumn(t, baseTable)) return false
 
               if (freedOriginIds.has(t.id)) return true
               const status = sd.tableStates[t.id]?.status ?? 'available'
@@ -1125,10 +1473,7 @@ export const useReservationStore = create<ReservationStore>()(
             }
 
             const destinationTables = [baseTable, ...toMerge]
-            const firstTable = destinationTables.reduce((best, t) =>
-              getTableNumber(t.label) < getTableNumber(best.label) ? t : best
-            )
-            const minY = Math.min(...destinationTables.map((t) => t.y))
+            const anchor = getMergedAnchor(destinationTables)
             const totalSeats = destinationTables.reduce((sum, t) => sum + t.seats, 0)
             const mergedId = getNextId(allUsedIds(state.tables, state.sessionData), 't')
 
@@ -1155,8 +1500,8 @@ export const useReservationStore = create<ReservationStore>()(
               })),
               label: getMergeLabel(allNums),
               seats: totalSeats,
-              x: firstTable.x,
-              y: minY,
+              x: anchor.x,
+              y: anchor.y,
               width: TABLE_WIDTH,
               height: getMergedTableHeight(destinationTables.length),
             })

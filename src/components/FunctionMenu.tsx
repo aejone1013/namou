@@ -75,7 +75,7 @@ export default function FunctionMenu() {
           )}
         >
           <div className="px-3 py-2 border-b border-border">
-            <p className="text-[11px] font-semibold text-charcoal-lighter">기능 메뉴</p>
+            <p className="text-[12px] font-semibold text-charcoal-lighter">기능 메뉴</p>
           </div>
 
           <div className="p-1.5 space-y-0.5">
@@ -85,7 +85,7 @@ export default function FunctionMenu() {
                 onClick={handleEditLayout}
                 className={cn(
                   'w-full flex items-center gap-2.5 px-3 py-2 rounded-xl',
-                  'text-xs font-medium text-charcoal',
+                  'text-sm font-medium text-charcoal',
                   'hover:bg-cream transition-colors'
                 )}
               >
@@ -99,7 +99,7 @@ export default function FunctionMenu() {
               onClick={handleResetReservations}
               className={cn(
                 'w-full flex items-center gap-2.5 px-3 py-2 rounded-xl',
-                'text-xs font-medium transition-colors',
+                'text-sm font-medium transition-colors',
                 confirmAction === 'reservations'
                   ? 'text-occupied bg-occupied-light'
                   : 'text-charcoal hover:bg-cream'
@@ -114,7 +114,7 @@ export default function FunctionMenu() {
               onClick={handleResetLayout}
               className={cn(
                 'w-full flex items-center gap-2.5 px-3 py-2 rounded-xl',
-                'text-xs font-medium transition-colors',
+                'text-sm font-medium transition-colors',
                 confirmAction === 'layout'
                   ? 'text-occupied bg-occupied-light'
                   : 'text-charcoal hover:bg-cream'

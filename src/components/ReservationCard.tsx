@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Users, MessageSquare, Phone, Trash2, Armchair, Pencil, Sun, Moon, CheckCircle, Clock3 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import type { Reservation } from '@/data/dummy'
-import { compareTableLabel, getMergeGroup, getMergeLabel, getTableNumber } from '@/data/dummy'
+import { compareTableLabel, getMergeLabel, getTableNumber } from '@/data/dummy'
 import { useReservationStore } from '@/store/useReservationStore'
 import { useToastStore } from '@/store/useToastStore'
 import { toastActions } from '@/features/toast/toastPresets'
@@ -58,11 +58,13 @@ export default function ReservationCard({ reservation }: ReservationCardProps) {
   const [showChangeSelect, setShowChangeSelect] = useState(false)
   const [showAssignSelect, setShowAssignSelect] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showPinAssignmentChooser, setShowPinAssignmentChooser] = useState(true)
 
   const effectiveTables = store.getEffectiveTables()
   const sessionData = store.sessionData[store.activeSession]
   const baseTableIds = new Set(store.tables.map((t) => t.id))
   const baseTableById = new Map(store.tables.map((t) => [t.id, t] as const))
+  const isSameColumn = (a: { x: number }, b: { x: number }) => Math.abs(a.x - b.x) <= 42
   const getScopeTableIdsForMergeLabel = (baseTableId: string, mergeLabel: string): string[] => {
     const match = mergeLabel.match(/^T(\d+)-(\d+)$/)
     if (!match) return [baseTableId]
@@ -123,6 +125,28 @@ export default function ReservationCard({ reservation }: ReservationCardProps) {
     return nums.length === 1 ? `T${nums[0]}` : getMergeLabel(nums)
   })()
   const hasAssignedBooking = assignedEntries.length > 0
+  const assignedSingleTargetOptions = store.tables
+    .filter((t) => {
+      if (!assignedPrimaryVisibleTable) return false
+      return Math.abs(t.x - assignedPrimaryVisibleTable.x) <= 42
+    })
+    .filter((t) => t.seats >= reservation.partySize)
+    .filter((t) => {
+      const planned = getPlannedBookings(t.id)
+      return !planned.some((b) => b.reservationId !== reservation.id && reservationOverlapsBooking(reservation, b))
+    })
+    .sort((a, b) => compareTableLabel(a.label, b.label))
+  const canShowPinAssignmentChooser =
+    reservation.status === 'waiting' &&
+    hasAssignedBooking &&
+    assignedSingleTargetOptions.length >= 2 &&
+    showPinAssignmentChooser
+
+  useEffect(() => {
+    if (!hasAssignedBooking) {
+      setShowPinAssignmentChooser(true)
+    }
+  }, [hasAssignedBooking])
 
   const availableTables = [...effectiveTables.filter(
     (t) => t.status === 'available' && t.seats >= reservation.partySize
@@ -134,15 +158,11 @@ export default function ReservationCard({ reservation }: ReservationCardProps) {
     .filter((t) => t.seats < reservation.partySize)
     .map((target) => {
       const baseNum = getTableNumber(target.label)
-      const group = getMergeGroup(baseNum)
       const candidates = effectiveTables
         .filter((t) => t.id !== target.id)
         .filter((t) => baseTableIds.has(t.id))
         .filter((t) => t.status === 'available')
-        .filter((t) => {
-          const num = getTableNumber(t.label)
-          return group ? group.includes(num) : true
-        })
+        .filter((t) => isSameColumn(t, target))
         .map((t) => ({ id: t.id, num: getTableNumber(t.label), seats: t.seats }))
 
       const mergePlan = planAdjacentMerge(baseNum, target.seats, reservation.partySize, candidates)
@@ -183,22 +203,17 @@ export default function ReservationCard({ reservation }: ReservationCardProps) {
     if (reservation.partySize <= target.seats) return true
 
     const baseNum = getTableNumber(target.label)
-    const group = getMergeGroup(baseNum)
     const candidates = effectiveTables
       .filter((t) => t.id !== target.id)
       .filter((t) => baseTableIds.has(t.id))
       .filter((t) => t.status === 'available')
-      .filter((t) => {
-        const num = getTableNumber(t.label)
-        return group ? group.includes(num) : true
-      })
+      .filter((t) => isSameColumn(t, target))
       .map((t) => ({ id: t.id, num: getTableNumber(t.label), seats: t.seats }))
 
     return !!planAdjacentMerge(baseNum, target.seats, reservation.partySize, candidates)
   }
 
   const reassignableTables = [...effectiveTables.filter((t) => {
-    if (assignedSourceIds.includes(t.id)) return false
     const planned = getPlannedBookings(t.id)
     if (planned.some((b) => b.reservationId !== reservation.id && reservationOverlapsBooking(reservation, b))) return false
     if (!(t.status === 'occupied' || t.status === 'available')) return false
@@ -214,15 +229,11 @@ export default function ReservationCard({ reservation }: ReservationCardProps) {
     .filter((t) => baseTableIds.has(t.id))
     .map((target) => {
       const baseNum = getTableNumber(target.label)
-      const group = getMergeGroup(baseNum)
       const candidates = effectiveTables
         .filter((t) => t.id !== target.id)
         .filter((t) => baseTableIds.has(t.id))
         .filter((t) => t.status === 'available')
-        .filter((t) => {
-          const num = getTableNumber(t.label)
-          return group ? group.includes(num) : true
-        })
+        .filter((t) => isSameColumn(t, target))
         .map((t) => ({ id: t.id, num: getTableNumber(t.label), seats: t.seats }))
 
       const mergePlan = planAdjacentMerge(baseNum, target.seats, reservation.partySize, candidates)
@@ -346,6 +357,12 @@ export default function ReservationCard({ reservation }: ReservationCardProps) {
     setShowAssignSelect(false)
   }
 
+  const handlePinAssignmentToSingleTable = (tableId: string, label: string) => {
+    clearNextBookingByReservation(reservation.id)
+    setNextBookingMulti([tableId], reservation.id, label)
+    setShowPinAssignmentChooser(false)
+  }
+
   const handleComplete = () => {
     if (!seatedTable) return
     const collectAutoSeatCandidates = () => {
@@ -398,19 +415,19 @@ export default function ReservationCard({ reservation }: ReservationCardProps) {
         <div className="flex items-center gap-1.5 shrink-0">
           {/* Seated table badge */}
           {reservation.status === 'seated' && seatedTable && (
-            <span className="text-[10px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded-md">
+            <span className="text-[12px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded-md">
               {seatedTable.label}
             </span>
           )}
           {/* Assigned (nextBooking) table badge */}
           {reservation.status === 'waiting' && hasAssignedBooking && (
-            <span className="text-[10px] font-bold text-reserved bg-reserved/10 px-1.5 py-0.5 rounded-md">
+            <span className="text-[12px] font-bold text-reserved bg-reserved/10 px-1.5 py-0.5 rounded-md">
               {(assignedDisplayLabel ?? '배정')} 배정
             </span>
           )}
           <span
             className={cn(
-              'inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full',
+              'inline-flex items-center gap-1 text-[12px] font-semibold px-2.5 py-1 rounded-full',
               config.bg, config.text
             )}
           >
@@ -421,7 +438,7 @@ export default function ReservationCard({ reservation }: ReservationCardProps) {
         </div>
       </div>
 
-      <div className="flex items-center gap-3 text-charcoal-light text-xs min-w-0">
+      <div className="flex items-center gap-3 text-charcoal-light text-sm min-w-0">
         <span className="inline-flex items-center gap-1 min-w-0">
           {reservation.period === 'lunch' ? (
             <Sun size={11} className="text-yellow-600" />
@@ -437,28 +454,45 @@ export default function ReservationCard({ reservation }: ReservationCardProps) {
       </div>
 
       {reservation.phone && (
-        <div className="flex items-center gap-1.5 mt-1.5 text-charcoal-lighter text-[11px]">
+        <div className="flex items-center gap-1.5 mt-1.5 text-charcoal-lighter text-[12px]">
           <Phone size={11} />
           {reservation.phone}
         </div>
       )}
 
       {reservation.note && (
-        <div className="flex items-start gap-1.5 mt-1.5 text-[11px] text-primary-dark bg-primary/5 rounded-xl px-2.5 py-1.5 min-w-0">
+        <div className="flex items-start gap-1.5 mt-1.5 text-[12px] text-primary-dark bg-primary/5 rounded-xl px-2.5 py-1.5 min-w-0">
           <MessageSquare size={11} className="mt-0.5 shrink-0" />
           <span className="break-words">{reservation.note}</span>
+        </div>
+      )}
+
+      {canShowPinAssignmentChooser && (
+        <div className="mt-2 rounded-xl border border-reserved/20 bg-reserved/5 px-2.5 py-2">
+          <p className="text-[12px] text-charcoal-lighter mb-1">배정 위치 선택</p>
+          <div className="flex flex-wrap gap-1.5">
+            {assignedSingleTargetOptions.map((t) => (
+              <button
+                key={`pin-${reservation.id}-${t.id}`}
+                onClick={() => handlePinAssignmentToSingleTable(t.id, t.label)}
+                className="text-[12px] font-medium px-2.5 py-1 rounded-lg bg-surface hover:bg-reserved/10 text-charcoal border border-border hover:border-reserved/35 transition-colors"
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
       {/* 테이블 선택 패널 (착석) */}
       {showTableSelect && (
         <div className="mt-2.5 pt-2.5 border-t border-border">
-          <p className="text-[11px] text-charcoal-lighter mb-1.5">테이블 선택:</p>
+          <p className="text-[12px] text-charcoal-lighter mb-1.5">테이블 선택:</p>
           {availableTables.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {availableTables.map((t) => (
                 <button key={t.id} onClick={() => handleSeatAtTable(t.id)}
-                  className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-cream hover:bg-primary/10 text-charcoal border border-border hover:border-primary/30 transition-colors"
+                  className="text-[12px] font-medium px-2.5 py-1 rounded-lg bg-cream hover:bg-primary/10 text-charcoal border border-border hover:border-primary/30 transition-colors"
                 >
                   {t.label} ({t.seats}석)
                 </button>
@@ -467,13 +501,13 @@ export default function ReservationCard({ reservation }: ReservationCardProps) {
           )}
           {mergeSeatOptions.length > 0 && (
             <div className={cn('space-y-1.5', availableTables.length > 0 && 'mt-2')}>
-              <p className="text-[10px] text-charcoal-lighter">병합 가능 조합:</p>
+              <p className="text-[12px] text-charcoal-lighter">병합 가능 조합:</p>
               <div className="flex flex-wrap gap-1.5">
                 {mergeSeatOptions.map((option) => (
                   <button
                     key={`${option.baseTableId}-${option.mergeLabel}`}
                     onClick={() => handleSeatWithMergeOption(option.baseTableId, option.mergeTableIds)}
-                    className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-primary/5 hover:bg-primary/10 text-charcoal border border-primary/20 hover:border-primary/35 transition-colors"
+                    className="text-[12px] font-medium px-2.5 py-1 rounded-lg bg-primary/5 hover:bg-primary/10 text-charcoal border border-primary/20 hover:border-primary/35 transition-colors"
                   >
                     {option.mergeLabel}
                   </button>
@@ -482,24 +516,24 @@ export default function ReservationCard({ reservation }: ReservationCardProps) {
             </div>
           )}
           {availableTables.length === 0 && mergeSeatOptions.length === 0 && (
-            <p className="text-[11px] text-charcoal-lighter">착석 가능한 테이블이 없습니다</p>
+            <p className="text-[12px] text-charcoal-lighter">착석 가능한 테이블이 없습니다</p>
           )}
-          <button onClick={() => setShowTableSelect(false)} className="text-[10px] text-charcoal-lighter mt-1.5 hover:text-charcoal">취소</button>
+          <button onClick={() => setShowTableSelect(false)} className="text-[12px] text-charcoal-lighter mt-1.5 hover:text-charcoal">취소</button>
         </div>
       )}
 
       {/* 테이블 변경 패널 (nextBooking 재배정) */}
       {showChangeSelect && (
         <div className="mt-2.5 pt-2.5 border-t border-border">
-          <p className="text-[11px] text-charcoal-lighter mb-1.5">변경할 테이블:</p>
+          <p className="text-[12px] text-charcoal-lighter mb-1.5">변경할 테이블:</p>
           {assignDirectTables.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {assignDirectTables.map((t) => (
                 <button key={t.id} onClick={() => handleChangeAssignment(t.id)}
-                  className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-cream hover:bg-reserved/10 text-charcoal border border-border hover:border-reserved/30 transition-colors"
+                  className="text-[12px] font-medium px-2.5 py-1 rounded-lg bg-cream hover:bg-reserved/10 text-charcoal border border-border hover:border-reserved/30 transition-colors"
                 >
                   {t.label}
-                  <span className="ml-1 text-[10px] text-charcoal-lighter">
+                  <span className="ml-1 text-[12px] text-charcoal-lighter">
                     {t.status === 'occupied' ? '사용중' : '빈'}
                   </span>
                 </button>
@@ -508,16 +542,16 @@ export default function ReservationCard({ reservation }: ReservationCardProps) {
           )}
           {assignMergeOptions.length > 0 && (
             <div className={cn('space-y-1.5', assignDirectTables.length > 0 && 'mt-2')}>
-              <p className="text-[10px] text-charcoal-lighter">병합 가능 조합:</p>
+              <p className="text-[12px] text-charcoal-lighter">병합 가능 조합:</p>
               <div className="flex flex-wrap gap-1.5">
                 {assignMergeOptions.map((option) => (
                   <button
                     key={`change-${option.baseTableId}-${option.mergeLabel}-${option.baseStatus}`}
                     onClick={() => handleChangeAssignmentWithMerge(option.baseTableId, option.mergeLabel)}
-                    className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-reserved/5 hover:bg-reserved/10 text-charcoal border border-reserved/20 hover:border-reserved/35 transition-colors"
+                    className="text-[12px] font-medium px-2.5 py-1 rounded-lg bg-reserved/5 hover:bg-reserved/10 text-charcoal border border-reserved/20 hover:border-reserved/35 transition-colors"
                   >
                     {option.mergeLabel}
-                    <span className="ml-1 text-[10px] text-charcoal-lighter">
+                    <span className="ml-1 text-[12px] text-charcoal-lighter">
                       {option.baseStatus === 'occupied' ? '사용중' : '빈'}
                     </span>
                   </button>
@@ -527,40 +561,40 @@ export default function ReservationCard({ reservation }: ReservationCardProps) {
           )}
           {occupiedMergedAssignOptions.length > 0 && (
             <div className={cn('space-y-1.5', (assignDirectTables.length > 0 || assignMergeOptions.length > 0) && 'mt-2')}>
-              <p className="text-[10px] text-charcoal-lighter">사용중 병합 테이블 내 예약 배정:</p>
+              <p className="text-[12px] text-charcoal-lighter">사용중 병합 테이블 내 예약 배정:</p>
               <div className="flex flex-wrap gap-1.5">
                 {occupiedMergedAssignOptions.map((option) => (
                   <button
                     key={`change-scope-${option.mergeLabel}`}
                     onClick={() => handleChangeAssignmentOnScope(option.tableIds, option.mergeLabel)}
-                    className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-reserved/5 hover:bg-reserved/10 text-charcoal border border-reserved/20 hover:border-reserved/35 transition-colors"
+                    className="text-[12px] font-medium px-2.5 py-1 rounded-lg bg-reserved/5 hover:bg-reserved/10 text-charcoal border border-reserved/20 hover:border-reserved/35 transition-colors"
                   >
                     {option.mergeLabel}
-                    <span className="ml-1 text-[10px] text-charcoal-lighter">{option.hostLabel}</span>
+                    <span className="ml-1 text-[12px] text-charcoal-lighter">{option.hostLabel}</span>
                   </button>
                 ))}
               </div>
             </div>
           )}
           {assignDirectTables.length === 0 && assignMergeOptions.length === 0 && occupiedMergedAssignOptions.length === 0 && (
-            <p className="text-[11px] text-charcoal-lighter">이동 가능한 테이블 없음</p>
+            <p className="text-[12px] text-charcoal-lighter">이동 가능한 테이블 없음</p>
           )}
-          <button onClick={() => setShowChangeSelect(false)} className="text-[10px] text-charcoal-lighter mt-1.5 hover:text-charcoal">취소</button>
+          <button onClick={() => setShowChangeSelect(false)} className="text-[12px] text-charcoal-lighter mt-1.5 hover:text-charcoal">취소</button>
         </div>
       )}
 
       {/* 테이블 배정 패널 (nextBooking 신규 배정) */}
       {showAssignSelect && (
         <div className="mt-2.5 pt-2.5 border-t border-border">
-          <p className="text-[11px] text-charcoal-lighter mb-1.5">예약 배정할 테이블:</p>
+          <p className="text-[12px] text-charcoal-lighter mb-1.5">예약 배정할 테이블:</p>
           {assignDirectTables.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {assignDirectTables.map((t) => (
                 <button key={t.id} onClick={() => handleAssignNextBooking(t.id)}
-                  className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-cream hover:bg-reserved/10 text-charcoal border border-border hover:border-reserved/30 transition-colors"
+                  className="text-[12px] font-medium px-2.5 py-1 rounded-lg bg-cream hover:bg-reserved/10 text-charcoal border border-border hover:border-reserved/30 transition-colors"
                 >
                   {t.label}
-                  <span className="ml-1 text-[10px] text-charcoal-lighter">
+                  <span className="ml-1 text-[12px] text-charcoal-lighter">
                     {t.status === 'occupied' ? '사용중' : '빈'}
                   </span>
                 </button>
@@ -569,16 +603,16 @@ export default function ReservationCard({ reservation }: ReservationCardProps) {
           )}
           {assignMergeOptions.length > 0 && (
             <div className={cn('space-y-1.5', assignDirectTables.length > 0 && 'mt-2')}>
-              <p className="text-[10px] text-charcoal-lighter">병합 가능 조합:</p>
+              <p className="text-[12px] text-charcoal-lighter">병합 가능 조합:</p>
               <div className="flex flex-wrap gap-1.5">
                 {assignMergeOptions.map((option) => (
                   <button
                     key={`${option.baseTableId}-${option.mergeLabel}-${option.baseStatus}`}
                     onClick={() => handleAssignNextBookingWithMerge(option.baseTableId, option.mergeLabel)}
-                    className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-reserved/5 hover:bg-reserved/10 text-charcoal border border-reserved/20 hover:border-reserved/35 transition-colors"
+                    className="text-[12px] font-medium px-2.5 py-1 rounded-lg bg-reserved/5 hover:bg-reserved/10 text-charcoal border border-reserved/20 hover:border-reserved/35 transition-colors"
                   >
                     {option.mergeLabel}
-                    <span className="ml-1 text-[10px] text-charcoal-lighter">
+                    <span className="ml-1 text-[12px] text-charcoal-lighter">
                       {option.baseStatus === 'occupied' ? '사용중' : '빈'}
                     </span>
                   </button>
@@ -588,40 +622,40 @@ export default function ReservationCard({ reservation }: ReservationCardProps) {
           )}
           {occupiedMergedAssignOptions.length > 0 && (
             <div className={cn('space-y-1.5', (assignDirectTables.length > 0 || assignMergeOptions.length > 0) && 'mt-2')}>
-              <p className="text-[10px] text-charcoal-lighter">사용중 병합 테이블 내 예약 배정:</p>
+              <p className="text-[12px] text-charcoal-lighter">사용중 병합 테이블 내 예약 배정:</p>
               <div className="flex flex-wrap gap-1.5">
                 {occupiedMergedAssignOptions.map((option) => (
                   <button
                     key={`assign-scope-${option.mergeLabel}`}
                     onClick={() => handleAssignNextBookingOnScope(option.tableIds, option.mergeLabel)}
-                    className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-reserved/5 hover:bg-reserved/10 text-charcoal border border-reserved/20 hover:border-reserved/35 transition-colors"
+                    className="text-[12px] font-medium px-2.5 py-1 rounded-lg bg-reserved/5 hover:bg-reserved/10 text-charcoal border border-reserved/20 hover:border-reserved/35 transition-colors"
                   >
                     {option.mergeLabel}
-                    <span className="ml-1 text-[10px] text-charcoal-lighter">{option.hostLabel}</span>
+                    <span className="ml-1 text-[12px] text-charcoal-lighter">{option.hostLabel}</span>
                   </button>
                 ))}
               </div>
             </div>
           )}
           {assignDirectTables.length === 0 && assignMergeOptions.length === 0 && occupiedMergedAssignOptions.length === 0 && (
-            <p className="text-[11px] text-charcoal-lighter">배정 가능한 테이블 없음</p>
+            <p className="text-[12px] text-charcoal-lighter">배정 가능한 테이블 없음</p>
           )}
-          <button onClick={() => setShowAssignSelect(false)} className="text-[10px] text-charcoal-lighter mt-1.5 hover:text-charcoal">취소</button>
+          <button onClick={() => setShowAssignSelect(false)} className="text-[12px] text-charcoal-lighter mt-1.5 hover:text-charcoal">취소</button>
         </div>
       )}
 
       {/* 삭제 확인 */}
       {showDeleteConfirm && (
         <div className="mt-2.5 pt-2.5 border-t border-border">
-          <p className="text-[11px] text-charcoal mb-2">이 예약을 삭제하시겠습니까?</p>
+          <p className="text-[12px] text-charcoal mb-2">이 예약을 삭제하시겠습니까?</p>
           <div className="flex gap-2">
             <button
               onClick={() => { removeReservation(reservation.id); setShowDeleteConfirm(false) }}
-              className="flex-1 text-[11px] font-medium py-1.5 rounded-xl text-white bg-occupied hover:bg-occupied/80 transition-colors"
+              className="flex-1 text-[12px] font-medium py-1.5 rounded-xl text-white bg-occupied hover:bg-occupied/80 transition-colors"
             >삭제</button>
             <button
               onClick={() => setShowDeleteConfirm(false)}
-              className="flex-1 text-[11px] font-medium py-1.5 rounded-xl text-charcoal-light bg-cream hover:bg-border transition-colors"
+              className="flex-1 text-[12px] font-medium py-1.5 rounded-xl text-charcoal-light bg-cream hover:bg-border transition-colors"
             >취소</button>
           </div>
         </div>
@@ -632,7 +666,7 @@ export default function ReservationCard({ reservation }: ReservationCardProps) {
         <div className="mt-2 pt-2 border-t border-border flex justify-end">
           <button
             onClick={() => setShowDeleteConfirm(true)}
-            className="inline-flex items-center gap-1 text-[10px] text-charcoal-lighter hover:text-occupied transition-colors"
+            className="inline-flex items-center gap-1 text-[12px] text-charcoal-lighter hover:text-occupied transition-colors"
             title="삭제"
           >
             <Trash2 size={11} />
@@ -673,7 +707,7 @@ export default function ReservationCard({ reservation }: ReservationCardProps) {
                   착석
                 </button>
               ) : (
-                <span className="flex-1 text-[11px] text-charcoal-lighter text-center py-1.5">빈 테이블 없음</span>
+                <span className="flex-1 text-[12px] text-charcoal-lighter text-center py-1.5">빈 테이블 없음</span>
               )}
 
               <button

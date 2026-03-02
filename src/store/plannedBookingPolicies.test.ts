@@ -314,3 +314,42 @@ test('selectSimultaneousScopedAutoSeatBookings skips overlapping same-start scop
 
   assert.deepEqual(selected.map((b) => b.reservationId), ['B'])
 })
+
+test('selectSimultaneousScopedAutoSeatBookings dedupes same reservation across multiple scopes', () => {
+  const selected = selectSimultaneousScopedAutoSeatBookings(
+    [
+      {
+        reservationId: 'R',
+        name: 'R',
+        partySize: 2,
+        startTime: '20:30',
+        endTime: '22:00',
+        targetLabel: 'T1',
+        scopeTableIds: ['t1'],
+      },
+      {
+        reservationId: 'R',
+        name: 'R',
+        partySize: 2,
+        startTime: '20:30',
+        endTime: '22:00',
+        targetLabel: 'T3',
+        scopeTableIds: ['t3'],
+      },
+      {
+        reservationId: 'S',
+        name: 'S',
+        partySize: 2,
+        startTime: '20:30',
+        endTime: '22:00',
+        targetLabel: 'T2',
+        scopeTableIds: ['t2'],
+      },
+    ],
+    ['t1', 't2', 't3']
+  )
+
+  const rCount = selected.filter((b) => b.reservationId === 'R').length
+  assert.equal(rCount, 1)
+  assert.deepEqual(selected.map((b) => b.reservationId).sort(), ['R', 'S'])
+})

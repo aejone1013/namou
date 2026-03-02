@@ -98,9 +98,9 @@ export default function TimeTable({ onClose }: TimeTableProps) {
   }, [times])
 
   return (
-    <aside className="w-[320px] min-w-[320px] h-full bg-surface border-l border-border flex flex-col shadow-xl">
+    <aside className="w-[clamp(272px,18vw,312px)] min-w-[272px] h-full bg-surface border-l border-border flex flex-col shadow-xl">
       {/* 헤더 */}
-      <div className="px-3 py-2.5 border-b border-border flex items-center justify-between gap-2">
+      <div className="h-11 px-3 border-b border-border flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Clock size={14} className="text-primary" />
           <h2 className="text-[13px] font-bold text-charcoal">예약시간대</h2>
@@ -213,8 +213,8 @@ export default function TimeTable({ onClose }: TimeTableProps) {
                 <span className={cn(
                   'tabular-nums',
                   isHour
-                    ? 'text-[11px] font-bold text-charcoal'
-                    : 'text-[10px] text-charcoal-lighter'
+                    ? 'text-[12px] font-bold text-charcoal'
+                    : 'text-[12px] text-charcoal-lighter'
                 )}>
                   {time}
                 </span>
@@ -230,7 +230,7 @@ export default function TimeTable({ onClose }: TimeTableProps) {
                     {starting.map((r) => (
                       <div
                         key={r.id}
-                        className="flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-md bg-cream border border-border"
+                        className="flex items-center gap-1.5 text-[12px] px-2 py-0.5 rounded-md bg-cream border border-border"
                       >
                         <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', statusDot[r.status])} />
                         <span className="font-medium text-charcoal truncate">{r.name}</span>
@@ -254,17 +254,17 @@ export default function TimeTable({ onClose }: TimeTableProps) {
         <div className="flex items-center justify-around text-center">
           <div>
             <p className="text-base font-bold text-primary">{summaryCounts.waiting}</p>
-            <p className="text-[10px] text-charcoal-lighter">대기</p>
+            <p className="text-[12px] text-charcoal-lighter">대기</p>
           </div>
           <div className="w-px h-7 bg-border" />
           <div>
             <p className="text-base font-bold text-available">{summaryCounts.seated}</p>
-            <p className="text-[10px] text-charcoal-lighter">착석</p>
+            <p className="text-[12px] text-charcoal-lighter">착석</p>
           </div>
           <div className="w-px h-7 bg-border" />
           <div>
             <p className="text-base font-bold text-charcoal">{summaryCounts.total}</p>
-            <p className="text-[10px] text-charcoal-lighter">{activeSession === 'lunch' ? '점심' : '저녁'} 전체</p>
+            <p className="text-[12px] text-charcoal-lighter">{activeSession === 'lunch' ? '점심' : '저녁'} 전체</p>
           </div>
         </div>
       </div>

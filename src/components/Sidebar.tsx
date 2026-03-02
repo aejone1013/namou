@@ -3,6 +3,7 @@ import { Plus, Clock, Users, CheckCircle } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useReservationStore } from '@/store/useReservationStore'
 import ReservationCard from './ReservationCard'
+import logoImage from '@/assets/namou.jpg'
 
 type TabType = 'waiting' | 'seated' | 'completed'
 type WaitingPreset = 'all' | 'soon' | 'assigned' | 'unassigned'
@@ -14,7 +15,7 @@ const tabConfig: { key: TabType; label: string; icon: typeof Clock }[] = [
 ]
 
 export default function Sidebar() {
-  const logoSrc = '/namou.jpg'
+  const logoSrc = logoImage
   const { reservations, openModal, activeSession, sessionData } = useReservationStore()
   const [activeTab, setActiveTab] = useState<TabType>('waiting')
   const [waitingPreset, setWaitingPreset] = useState<WaitingPreset>('all')
@@ -71,7 +72,7 @@ export default function Sidebar() {
   )
 
   return (
-    <aside className="w-[280px] min-w-[280px] h-full bg-surface border-r border-border flex flex-col">
+    <aside className="w-[clamp(300px,21vw,360px)] min-w-[300px] h-full bg-surface border-r border-border flex flex-col">
       {/* Header */}
       <div className="p-4 pb-3">
         <div className="flex items-center justify-between mb-4">
@@ -82,7 +83,7 @@ export default function Sidebar() {
                 alt="namou logo"
                 className="w-full h-full object-cover"
                 draggable={false}
-                onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/namou.jpg' }}
+                onError={(e) => { (e.currentTarget as HTMLImageElement).src = logoImage }}
               />
             </div>
             <h1 className="text-base font-bold text-charcoal tracking-tight">namou</h1>
@@ -125,7 +126,7 @@ export default function Sidebar() {
                   className={cn(
                     'inline-flex items-center justify-center',
                     'min-w-[18px] h-[18px] px-0.5',
-                    'text-[10px] font-bold rounded-full',
+                    'text-[12px] font-bold rounded-full',
                     isActive ? 'bg-primary text-white' : 'bg-border text-charcoal-lighter'
                   )}
                 >
@@ -183,16 +184,16 @@ export default function Sidebar() {
                 alt=""
                 className="w-full h-full object-cover"
                 draggable={false}
-                onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/namou.jpg' }}
+                onError={(e) => { (e.currentTarget as HTMLImageElement).src = logoImage }}
               />
             </div>
-            <p className="text-xs">
+            <p className="text-sm">
               {activeTab === 'waiting' && '대기 중인 예약이 없습니다'}
               {activeTab === 'seated' && '착석 중인 팀이 없습니다'}
               {activeTab === 'completed' && '완료된 예약이 없습니다'}
             </p>
             {activeTab === 'waiting' && (
-              <p className="text-[10px] mt-1">위의 추가 버튼을 눌러주세요</p>
+              <p className="text-[12px] mt-1">위의 추가 버튼을 눌러주세요</p>
             )}
           </div>
         ) : (
@@ -207,17 +208,17 @@ export default function Sidebar() {
         <div className="flex items-center justify-around text-center">
           <div>
             <p className="text-base font-bold text-primary">{waitingCount}</p>
-            <p className="text-[10px] text-charcoal-lighter">대기</p>
+            <p className="text-[12px] text-charcoal-lighter">대기</p>
           </div>
           <div className="w-px h-7 bg-border" />
           <div>
             <p className="text-base font-bold text-available">{seatedCount}</p>
-            <p className="text-[10px] text-charcoal-lighter">착석</p>
+            <p className="text-[12px] text-charcoal-lighter">착석</p>
           </div>
           <div className="w-px h-7 bg-border" />
           <div>
             <p className="text-base font-bold text-charcoal">{sessionReservations.length}</p>
-            <p className="text-[10px] text-charcoal-lighter">전체</p>
+            <p className="text-[12px] text-charcoal-lighter">전체</p>
           </div>
         </div>
       </div>

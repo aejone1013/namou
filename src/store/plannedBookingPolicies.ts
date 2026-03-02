@@ -70,6 +70,7 @@ export function selectSimultaneousScopedAutoSeatBookings(
 
   const selected: Array<NextBooking & { scopeTableIds: string[] }> = []
   for (const candidate of candidates) {
+    if (selected.some((s) => s.reservationId === candidate.reservationId)) continue
     if (selected.some((s) => bookingScopesOverlap(s.scopeTableIds, candidate.scopeTableIds))) continue
     selected.push(candidate)
   }

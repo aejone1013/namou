@@ -114,7 +114,7 @@ export default function EditableTable({ table }: EditableTableProps) {
       style={absoluteRectStyle(table)}
     >
       <Move size={10} className="text-charcoal-lighter mb-0.5" />
-      <span className="text-[11px] font-bold text-charcoal leading-none">{table.label}</span>
+      <span className="text-[12px] font-bold text-charcoal leading-none">{table.label}</span>
       <div className="flex items-center gap-0.5 mt-0.5">
         <Users size={9} className="text-charcoal-lighter" />
         <span className="text-[9px] text-charcoal-light">{table.seats}</span>

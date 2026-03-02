@@ -25,6 +25,10 @@
   --font-sans: 'Pretendard Variable', 'Pretendard', system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
+html {
+  font-size: 17px;
+}
+
 body {
   margin: 0;
   padding: 0;
@@ -35,7 +39,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
   overflow: hidden;
   user-select: none;
-  font-size: 15px;
+  font-size: 1rem;
 }
 
 #root {
@@ -113,9 +117,19 @@ textarea:focus-visible {
 }
 
 /* POS/tablet ergonomics: larger targets on touch devices */
+@media (min-width: 2200px) {
+  html {
+    font-size: 19px;
+  }
+}
+
 @media (pointer: coarse) {
+  html {
+    font-size: 18px;
+  }
+
   body {
-    font-size: 16px;
+    font-size: 1rem;
     line-height: 1.45;
   }
 

@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, ipcMain } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -21,6 +21,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
     },
   })
 
@@ -47,6 +48,10 @@ function createWindow() {
 }
 
 app.whenReady().then(createWindow)
+
+ipcMain.on('app:quit', () => {
+  app.quit()
+})
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

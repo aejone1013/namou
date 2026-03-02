@@ -16,6 +16,8 @@ export interface CurrentTeam {
   name: string
   partySize: number
   seatedAt: string         // "13:00" 형식
+  startTime?: string
+  endTime?: string
 }
 
 export interface NextBooking {
@@ -116,11 +118,14 @@ function generateTimes(startH: number, startM: number, endH: number, endM: numbe
   return times
 }
 
-export const LUNCH_TIMES = generateTimes(12, 0, 14, 0)
-export const DINNER_TIMES = generateTimes(19, 0, 21, 30)
+export const FIXED_LUNCH_START_TIMES = ['12:00', '12:30', '13:00'] as const
+export const FIXED_DINNER_START_TIMES = ['19:00', '19:15', '19:30', '20:30', '20:45', '21:00'] as const
+export const LUNCH_TIMES = [...FIXED_LUNCH_START_TIMES]
+export const DINNER_TIMES = [...FIXED_DINNER_START_TIMES]
+export const WALKIN_TIME_OPTIONS = generateTimes(19, 0, 23, 45)
 
 export function getStartTimeOptions(period: 'lunch' | 'dinner'): string[] {
-  return period === 'lunch' ? LUNCH_TIMES : DINNER_TIMES
+  return period === 'lunch' ? [...LUNCH_TIMES] : [...DINNER_TIMES]
 }
 
 // 시작 시간에서 1시간 30분 뒤를 자동 계산

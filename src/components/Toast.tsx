@@ -43,7 +43,7 @@ export default function ToastContainer() {
                 toast.action!.onClick()
                 dismiss(toast.id)
               }}
-              className="ml-1 px-2 py-0.5 rounded-lg bg-white/20 hover:bg-white/30 text-[11px] font-semibold transition-colors"
+              className="ml-1 px-2 py-0.5 rounded-lg bg-white/20 hover:bg-white/30 text-[12px] font-semibold transition-colors"
             >
               {toast.action.label}
             </button>

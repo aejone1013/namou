@@ -95,7 +95,7 @@ export default function TableShape({ table }: TableShapeProps) {
       <span className="text-[13px] font-bold text-charcoal leading-none tracking-tight">{table.label}</span>
       <div className="flex items-center gap-0.5 mt-0.5 px-1 py-0.5 rounded-md">
         <Users size={10} className="text-charcoal-lighter" />
-        <span className="text-[10px] text-charcoal-light font-medium">{table.seats}</span>
+        <span className="text-[12px] text-charcoal-light font-medium">{table.seats}</span>
       </div>
 
       {/* Occupied: show guest name + party size */}

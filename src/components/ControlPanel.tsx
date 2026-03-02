@@ -8,8 +8,8 @@ import { useToastStore } from '@/store/useToastStore'
 import { toastActions, toastMessages } from '@/features/toast/toastPresets'
 import {
   compareTableLabel,
+  getFixedEndTime,
   getCurrentTimeHHMM,
-  getMergeGroup,
   getMergeLabel,
   getTableNumber,
   isContiguousRange,
@@ -23,6 +23,14 @@ import OccupiedMoveClearActions from './control-panel/OccupiedMoveClearActions'
 import ReservedTableActionSection from './control-panel/ReservedTableActionSection'
 import TableEditPanel from './TableEditPanel'
 
+function normalizeToQuarter(time: string): string {
+  const mins = timeToMinutes(time)
+  const rounded = Math.ceil(mins / 15) * 15
+  const h = Math.floor(rounded / 60)
+  const m = rounded % 60
+  return `${h}:${String(m).padStart(2, '0')}`
+}
+
 export default function ControlPanel() {
   const store = useReservationStore()
   const {
@@ -32,6 +40,7 @@ export default function ControlPanel() {
     activeSession,
     clearTable,
     walkInTable,
+    walkInWithSelectedMerge,
     moveToTable,
     seatReservation,
     seatWithSelectedMerge,
@@ -52,8 +61,13 @@ export default function ControlPanel() {
   const [showWalkIn, setShowWalkIn] = useState(false)
   const [walkInSize, setWalkInSize] = useState(2)
   const [walkInName, setWalkInName] = useState('')
+  const initialWalkInStart = normalizeToQuarter(getCurrentTimeHHMM())
+  const [walkInStartTime, setWalkInStartTime] = useState(initialWalkInStart)
+  const [walkInEndTime, setWalkInEndTime] = useState(getFixedEndTime(initialWalkInStart))
   const [showMoveSelect, setShowMoveSelect] = useState(false)
   const [showNextBookingSelect, setShowNextBookingSelect] = useState(false)
+  const [showWalkInMergeSelect, setShowWalkInMergeSelect] = useState(false)
+  const [selectedWalkInMergeTableIds, setSelectedWalkInMergeTableIds] = useState<string[]>([])
   const [selectedMergeTableIds, setSelectedMergeTableIds] = useState<string[]>([])
   const [pendingSeatMergeReservationId, setPendingSeatMergeReservationId] = useState<string | null>(null)
 
@@ -61,8 +75,13 @@ export default function ControlPanel() {
     setShowWalkIn(false)
     setWalkInSize(2)
     setWalkInName('')
+    const base = normalizeToQuarter(getCurrentTimeHHMM())
+    setWalkInStartTime(base)
+    setWalkInEndTime(getFixedEndTime(base))
     setShowMoveSelect(false)
     setShowNextBookingSelect(false)
+    setShowWalkInMergeSelect(false)
+    setSelectedWalkInMergeTableIds([])
     setSelectedMergeTableIds([])
     setPendingSeatMergeReservationId(null)
   }
@@ -71,6 +90,8 @@ export default function ControlPanel() {
     resetSubState()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusedTableId])
+
+  const isSameColumn = (a: TableInfo, b: TableInfo) => Math.abs(a.x - b.x) <= 42
 
   const mergePreviewBaseTableId = table?.id ?? null
   const mergePreviewEligible =
@@ -189,7 +210,6 @@ export default function ControlPanel() {
     const baseTableIds = new Set(store.tables.map((t) => t.id))
     const isBaseTable = baseTableIds.has(table.id)
     const baseNum = getTableNumber(table.label)
-    const group = getMergeGroup(baseNum)
 
     return reservations.filter((r) => {
       if (r.status !== 'waiting' || r.period !== activeSession) return false
@@ -201,10 +221,7 @@ export default function ControlPanel() {
         .filter((t) => t.id !== table.id)
         .filter((t) => baseTableIds.has(t.id))
         .filter((t) => t.status === 'available')
-        .filter((t) => {
-          const num = getTableNumber(t.label)
-          return group ? group.includes(num) : true
-        })
+        .filter((t) => isSameColumn(t, table))
         .map((t) => ({ id: t.id, num: getTableNumber(t.label), seats: t.seats }))
 
       return !!planAdjacentMerge(baseNum, table.seats, r.partySize, candidates)
@@ -219,6 +236,11 @@ export default function ControlPanel() {
 
   const handleWalkIn = () => {
     if (!table) return
+    const tableId = table.id
+    if (timeToMinutes(walkInEndTime) <= timeToMinutes(walkInStartTime)) {
+      toast.show('워크인 종료 시간은 시작 시간보다 늦어야 합니다.', 'error')
+      return
+    }
     if (detailNextBooking && table.status === 'available') {
       const nowMins = timeToMinutes(getCurrentTimeHHMM())
       const nextMins = timeToMinutes(detailNextBooking.startTime)
@@ -237,7 +259,72 @@ export default function ControlPanel() {
         }
       }
     }
-    walkInTable(table.id, walkInSize, walkInName.trim() || undefined)
+    if (walkInSize > table.seats) {
+      setShowWalkInMergeSelect(true)
+      return
+    }
+
+    walkInTable(tableId, walkInSize, walkInName.trim() || undefined, walkInStartTime, walkInEndTime)
+    const after = useReservationStore.getState()
+    const occupied = after.getEffectiveTables().find((t) => t.id === tableId || t.mergedFrom?.some((o) => o.id === tableId))
+    if (!occupied || occupied.status !== 'occupied') {
+      toast.show(toastMessages.seatingFailedNoCapacity, 'error')
+      return
+    }
+    resetSubState()
+  }
+
+  const walkInMergeCandidates = (() => {
+    if (!table || table.status !== 'available' || walkInSize <= table.seats) return []
+    const baseTableIds = new Set(store.tables.map((t) => t.id))
+    return effectiveTables
+      .filter((t) => t.id !== table.id)
+      .filter((t) => baseTableIds.has(t.id))
+      .filter((t) => t.status === 'available')
+      .filter((t) => isSameColumn(t, table))
+      .sort((a, b) => {
+        const aDist = Math.abs(a.x - table.x) + Math.abs(a.y - table.y)
+        const bDist = Math.abs(b.x - table.x) + Math.abs(b.y - table.y)
+        if (aDist !== bDist) return aDist - bDist
+        if (a.seats !== b.seats) return a.seats - b.seats
+        return compareTableLabel(a.label, b.label)
+      })
+  })()
+
+  const selectedWalkInMergeTables = walkInMergeCandidates.filter((t) => selectedWalkInMergeTableIds.includes(t.id))
+  const selectedWalkInTotalSeats = (table?.seats ?? 0) + selectedWalkInMergeTables.reduce((sum, t) => sum + t.seats, 0)
+  const selectedWalkInNums = table
+    ? [getTableNumber(table.label), ...selectedWalkInMergeTables.map((t) => getTableNumber(t.label))]
+    : []
+  const isContiguousWalkInSelection = selectedWalkInNums.length > 0 ? isContiguousRange(selectedWalkInNums) : false
+  const canSubmitWalkInMerge =
+    !!table &&
+    walkInSize > table.seats &&
+    selectedWalkInTotalSeats >= walkInSize &&
+    isContiguousWalkInSelection
+
+  const handleSubmitWalkInMerge = () => {
+    if (!table || !canSubmitWalkInMerge) return
+    if (timeToMinutes(walkInEndTime) <= timeToMinutes(walkInStartTime)) {
+      toast.show('워크인 종료 시간은 시작 시간보다 늦어야 합니다.', 'error')
+      return
+    }
+    const tableId = table.id
+    walkInWithSelectedMerge(
+      tableId,
+      walkInSize,
+      walkInName.trim() || undefined,
+      selectedWalkInMergeTableIds,
+      walkInStartTime,
+      walkInEndTime
+    )
+    const after = useReservationStore.getState()
+    const occupied = after.getEffectiveTables().find((t) => t.id === tableId || t.mergedFrom?.some((o) => o.id === tableId))
+    if (!occupied || occupied.status !== 'occupied') {
+      toast.show(toastMessages.seatingFailedNoCapacity, 'error')
+      return
+    }
+    toast.show(`병합(${occupied.label})으로 워크인 배정했습니다.`, 'success')
     resetSubState()
   }
 
@@ -294,16 +381,12 @@ export default function ControlPanel() {
     if (table.nextBooking.partySize <= table.seats) return null
 
     const baseNum = getTableNumber(table.label)
-    const group = getMergeGroup(baseNum)
     const baseTableIds = new Set(store.tables.map((t) => t.id))
     const allAdjacentCandidates = effectiveTables
       .filter((t) => t.id !== table.id)
       .filter((t) => baseTableIds.has(t.id))
       .filter((t) => t.status === 'available')
-      .filter((t) => {
-        const num = getTableNumber(t.label)
-        return group ? group.includes(num) : true
-      })
+      .filter((t) => isSameColumn(t, table))
       .map((t) => ({ id: t.id, num: getTableNumber(t.label), seats: t.seats, label: t.label }))
       .sort((a, b) => compareTableLabel(a.label, b.label))
 
@@ -362,9 +445,9 @@ export default function ControlPanel() {
       .sort((a, b) => {
         const aNum = getTableNumber(a.label)
         const bNum = getTableNumber(b.label)
-        const aInGroup = group ? group.includes(aNum) : false
-        const bInGroup = group ? group.includes(bNum) : false
-        if (aInGroup !== bInGroup) return aInGroup ? -1 : 1
+        const aInColumn = isSameColumn(a, table)
+        const bInColumn = isSameColumn(b, table)
+        if (aInColumn !== bInColumn) return aInColumn ? -1 : 1
         const aDist = Math.abs(aNum - baseNum)
         const bDist = Math.abs(bNum - baseNum)
         if (aDist !== bDist) return aDist - bDist
@@ -405,16 +488,12 @@ export default function ControlPanel() {
     if (pendingSeatMergeReservation.partySize <= table.seats) return []
 
     const baseNum = getTableNumber(table.label)
-    const group = getMergeGroup(baseNum)
     const baseTableIds = new Set(store.tables.map((t) => t.id))
     const candidates = effectiveTables
       .filter((t) => t.id !== table.id)
       .filter((t) => baseTableIds.has(t.id))
       .filter((t) => t.status === 'available')
-      .filter((t) => {
-        const num = getTableNumber(t.label)
-        return group ? group.includes(num) : true
-      })
+      .filter((t) => isSameColumn(t, table))
       .map((t) => ({ id: t.id, num: getTableNumber(t.label), seats: t.seats, label: t.label }))
 
     const byNum = new Map(candidates.map((c) => [c.num, c]))
@@ -473,7 +552,7 @@ export default function ControlPanel() {
   })()
 
   return (
-    <aside className="w-[232px] min-w-[232px] h-full bg-surface border-l border-border flex flex-col overflow-y-auto">
+    <aside className="w-[clamp(198px,13vw,224px)] min-w-[198px] h-full bg-surface border-l border-border flex flex-col overflow-y-auto">
       {/* Section: TableEditPanel (edit mode) */}
       {isEditMode && (
         <div className="overflow-y-auto flex-1">
@@ -489,7 +568,7 @@ export default function ControlPanel() {
               <div className="w-10 h-10 rounded-2xl bg-cream flex items-center justify-center">
                 <Info size={18} className="text-charcoal-lighter" />
               </div>
-              <p className="text-[10px] text-charcoal-lighter leading-snug">
+              <p className="text-[12px] text-charcoal-lighter leading-snug">
                 테이블 선택 시<br />상세 정보 표시
               </p>
             </div>
@@ -498,7 +577,7 @@ export default function ControlPanel() {
               {/* Table header */}
               <div className="flex items-center justify-between pb-2 border-b border-border">
                 <span className="text-[13px] font-bold text-charcoal">{table.label}</span>
-                <div className="flex items-center gap-1 text-[11px] text-charcoal-lighter">
+                <div className="flex items-center gap-1 text-[12px] text-charcoal-lighter">
                   <Users size={12} />
                   {table.seats}인석
                 </div>
@@ -516,7 +595,7 @@ export default function ControlPanel() {
                     onClear={handleClearFocusedTable}
                   />
 
-                  <div className="text-[11px] space-y-1">
+                  <div className="text-[12px] space-y-1">
                     <p className="font-medium text-charcoal">
                       {linkedReservation.name}
                       <span className="text-charcoal-lighter ml-1">({linkedReservation.partySize}명)</span>
@@ -541,12 +620,14 @@ export default function ControlPanel() {
                     onClear={handleClearFocusedTable}
                   />
 
-                  <div className="text-[11px] text-charcoal py-0.5">
+                  <div className="text-[12px] text-charcoal py-0.5">
                     {table.currentTeam
                       ? (
                         <>
                           <span className="font-medium">{table.currentTeam.name}</span>{' '}
-                          <span className="text-charcoal-lighter">({table.currentTeam.partySize}명 · {table.currentTeam.seatedAt}~)</span>
+                          <span className="text-charcoal-lighter">
+                            ({table.currentTeam.partySize}명 · {table.currentTeam.startTime ?? table.currentTeam.seatedAt}~{table.currentTeam.endTime ?? ''})
+                          </span>
                         </>
                       )
                       : '사용중'}
@@ -563,6 +644,15 @@ export default function ControlPanel() {
                 setWalkInName={setWalkInName}
                 walkInSize={walkInSize}
                 setWalkInSize={setWalkInSize}
+                walkInStartTime={walkInStartTime}
+                setWalkInStartTime={(v) => {
+                  setWalkInStartTime(v)
+                  if (timeToMinutes(walkInEndTime) <= timeToMinutes(v)) {
+                    setWalkInEndTime(getFixedEndTime(v))
+                  }
+                }}
+                walkInEndTime={walkInEndTime}
+                setWalkInEndTime={setWalkInEndTime}
                 waitingReservations={(mirroredNextBookingSource || table.nextBooking) ? [] : waitingReservations}
                 hideEmptyWaitingMessage={!!detailNextBooking}
                 onSeatReservation={(reservationId) => {
@@ -577,6 +667,71 @@ export default function ControlPanel() {
                 }}
                 onWalkIn={handleWalkIn}
               />
+
+              {table.status === 'available' && showWalkIn && showWalkInMergeSelect && walkInSize > table.seats && (
+                <div className="border-t border-border pt-2">
+                  <div className="rounded-xl border border-primary/20 bg-primary/5 px-2.5 py-2 space-y-2">
+                    <p className="text-[12px] font-medium text-charcoal">
+                      워크인 {walkInSize}명 병합 배정
+                    </p>
+                    <p className="text-[12px] text-charcoal-lighter">
+                      병합할 테이블을 선택하세요. (기준: {table.label} {table.seats}석)
+                    </p>
+                    <div className="flex flex-wrap gap-1">
+                      {walkInMergeCandidates.map((candidate) => {
+                        const active = selectedWalkInMergeTableIds.includes(candidate.id)
+                        return (
+                          <button
+                            key={candidate.id}
+                            onClick={() =>
+                              setSelectedWalkInMergeTableIds((prev) =>
+                                prev.includes(candidate.id)
+                                  ? prev.filter((id) => id !== candidate.id)
+                                  : [...prev, candidate.id]
+                              )
+                            }
+                            className={cn(
+                              'text-[12px] font-medium px-1.5 py-0.5 rounded-md border transition-colors',
+                              active
+                                ? 'bg-primary text-white border-primary'
+                                : 'bg-cream text-charcoal border-border hover:border-primary/40 hover:bg-primary/10'
+                            )}
+                          >
+                            {candidate.label} · {candidate.seats}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <p className={cn(
+                      'text-[12px]',
+                      canSubmitWalkInMerge ? 'text-available' : 'text-charcoal-lighter'
+                    )}>
+                      선택 좌석: {selectedWalkInTotalSeats} / 필요 좌석: {walkInSize}
+                    </p>
+                    {selectedWalkInMergeTableIds.length > 0 && !isContiguousWalkInSelection && (
+                      <p className="text-[12px] text-occupied">연속된 테이블만 함께 병합할 수 있습니다.</p>
+                    )}
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={() => {
+                          setShowWalkInMergeSelect(false)
+                          setSelectedWalkInMergeTableIds([])
+                        }}
+                        className="flex-1 text-[12px] font-medium py-1.5 rounded-lg bg-surface border border-border text-charcoal-light hover:bg-border transition-colors"
+                      >
+                        취소
+                      </button>
+                      <button
+                        onClick={handleSubmitWalkInMerge}
+                        disabled={!canSubmitWalkInMerge}
+                        className="flex-1 text-[12px] font-medium py-1.5 rounded-lg bg-primary text-white hover:bg-primary-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        선택 병합으로 배정
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <NextBookingSection
                 table={table}
@@ -607,11 +762,11 @@ export default function ControlPanel() {
               {table.status === 'available' && pendingSeatMergeReservation && pendingSeatMergeReservation.partySize > table.seats && (
                 <div className="border-t border-border pt-2">
                   <div className="rounded-xl border border-primary/20 bg-primary/5 px-2.5 py-2 space-y-2">
-                    <p className="text-[10px] font-medium text-charcoal">
+                    <p className="text-[12px] font-medium text-charcoal">
                       {pendingSeatMergeReservation.name}
                       <span className="text-charcoal-lighter ml-1">({pendingSeatMergeReservation.partySize}명)</span>
                     </p>
-                    <p className="text-[10px] text-charcoal-lighter">
+                    <p className="text-[12px] text-charcoal-lighter">
                       병합 가능한 테이블을 선택해주세요.
                     </p>
 
@@ -630,21 +785,21 @@ export default function ControlPanel() {
                               toast.show(`병합(${option.label})으로 착석 처리했습니다.`, 'success')
                               resetSubState()
                             }}
-                            className="text-[10px] font-medium px-1.5 py-0.5 rounded-md border bg-cream text-charcoal border-border hover:border-primary/40 hover:bg-primary/10 transition-colors"
+                            className="text-[12px] font-medium px-1.5 py-0.5 rounded-md border bg-cream text-charcoal border-border hover:border-primary/40 hover:bg-primary/10 transition-colors"
                           >
                             {option.label}
                           </button>
                         ))}
                       </div>
                     ) : (
-                      <p className="text-[10px] text-charcoal-lighter">
+                      <p className="text-[12px] text-charcoal-lighter">
                         현재 이 테이블 기준으로 가능한 연속 병합 조합이 없습니다.
                       </p>
                     )}
 
                     <button
                       onClick={() => setPendingSeatMergeReservationId(null)}
-                      className="text-[10px] text-charcoal-lighter hover:text-charcoal transition-colors"
+                      className="text-[12px] text-charcoal-lighter hover:text-charcoal transition-colors"
                     >
                       취소
                     </button>
@@ -659,10 +814,10 @@ export default function ControlPanel() {
                 !detailNextBookingHasPlannedMerge && (
                 <div className="border-t border-border pt-2">
                   <div className="rounded-xl border border-reserved/20 bg-reserved/8 px-2.5 py-2">
-                    <p className="text-[10px] font-medium text-charcoal">다음 예약 인원({table.nextBooking.partySize}명)이 현재 테이블 좌석({table.seats})을 초과합니다.</p>
+                    <p className="text-[12px] font-medium text-charcoal">다음 예약 인원({table.nextBooking.partySize}명)이 현재 테이블 좌석({table.seats})을 초과합니다.</p>
                     {manualMergePrompt && manualMergePrompt.candidates.length > 0 ? (
                       <>
-                        <p className="text-[10px] text-charcoal-lighter mt-1">병합할 테이블을 선택해주세요.</p>
+                        <p className="text-[12px] text-charcoal-lighter mt-1">병합할 테이블을 선택해주세요.</p>
                         <div className="mt-1.5 flex flex-wrap gap-1">
                           {manualMergePrompt.candidates.map((c) => {
                             const active = manualMergePrompt.selectedIds.includes(c.id)
@@ -677,7 +832,7 @@ export default function ControlPanel() {
                                 )}
                                 disabled={selectionLocked}
                                 className={cn(
-                                  'text-[10px] font-medium px-1.5 py-0.5 rounded-md border transition-colors',
+                                  'text-[12px] font-medium px-1.5 py-0.5 rounded-md border transition-colors',
                                   active
                                     ? 'bg-reserved text-white border-reserved'
                                     : 'bg-cream text-charcoal border-border hover:border-reserved/40',
@@ -690,21 +845,21 @@ export default function ControlPanel() {
                           })}
                         </div>
                         <p className={cn(
-                          'mt-1 text-[10px]',
+                          'mt-1 text-[12px]',
                           manualMergePrompt.hasEnoughSeats ? 'text-available' : 'text-charcoal-lighter'
                         )}>
                           선택 좌석: {manualMergePrompt.selectedSeats} / 필요 좌석: {manualMergePrompt.requiredSeats}
                         </p>
                         {manualMergePrompt.selectedIds.length > 0 && (
-                          <p className="mt-1 text-[10px] text-charcoal-lighter">
+                          <p className="mt-1 text-[12px] text-charcoal-lighter">
                             병합 결과: <span className="text-charcoal font-medium">{getMergeLabel(manualMergePrompt.selectedNums)}</span>
                           </p>
                         )}
                         {manualMergePrompt.hasEnoughSeats && (
-                          <p className="mt-1 text-[10px] text-available">필요 좌석을 충족했습니다. 추가 선택은 잠깁니다(선택 해제는 가능).</p>
+                          <p className="mt-1 text-[12px] text-available">필요 좌석을 충족했습니다. 추가 선택은 잠깁니다(선택 해제는 가능).</p>
                         )}
                         {!manualMergePrompt.isContiguousSelection && (
-                          <p className="mt-1 text-[10px] text-occupied">연속된 테이블만 함께 병합할 수 있습니다.</p>
+                          <p className="mt-1 text-[12px] text-occupied">연속된 테이블만 함께 병합할 수 있습니다.</p>
                         )}
                         <button
                           onClick={() => {
@@ -719,14 +874,14 @@ export default function ControlPanel() {
                             }
                           }}
                           disabled={!manualMergePrompt.canSeat}
-                          className="mt-2 w-full inline-flex items-center justify-center text-[10px] font-medium py-1.5 rounded-lg text-reserved bg-reserved/15 hover:bg-reserved/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                          className="mt-2 w-full inline-flex items-center justify-center text-[12px] font-medium py-1.5 rounded-lg text-reserved bg-reserved/15 hover:bg-reserved/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           선택 병합으로 착석
                         </button>
 
                         {manualMergePrompt.alternativeTables.length > 0 && !manualMergePrompt.canSeat && (
                           <div className="mt-2 pt-2 border-t border-reserved/20">
-                            <p className="text-[10px] text-charcoal-lighter mb-1">옆 테이블 병합이 안 되면, 아래 빈 테이블로 바로 착석할 수 있습니다.</p>
+                            <p className="text-[12px] text-charcoal-lighter mb-1">옆 테이블 병합이 안 되면, 아래 빈 테이블로 바로 착석할 수 있습니다.</p>
                             <div className="flex flex-wrap gap-1">
                               {manualMergePrompt.alternativeTables.slice(0, 4).map((t) => (
                                 <button
@@ -734,7 +889,7 @@ export default function ControlPanel() {
                                   onClick={() => {
                                     handleSeatAtAlternativeTable(table.id, manualMergePrompt.reservationId, t.id, t.label)
                                   }}
-                                  className="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-cream hover:bg-primary/10 text-charcoal border border-border transition-colors"
+                                  className="text-[12px] font-medium px-1.5 py-0.5 rounded-md bg-cream hover:bg-primary/10 text-charcoal border border-border transition-colors"
                                 >
                                   {t.label} · {t.seats}
                                 </button>
@@ -745,14 +900,14 @@ export default function ControlPanel() {
                       </>
                     ) : (
                       <>
-                        <p className="text-[10px] text-charcoal-lighter mt-1">
+                        <p className="text-[12px] text-charcoal-lighter mt-1">
                           {manualMergePrompt && !manualMergePrompt.localMergePossible
                             ? '현재 구역에서는 연속 병합으로도 필요 좌석을 채울 수 없습니다.'
                             : '붙어있는 빈 테이블이 없거나 연속 선택이 불가능합니다.'}
                         </p>
                         {manualMergePrompt && manualMergePrompt.alternativeTables.length > 0 ? (
                           <div className="mt-2">
-                            <p className="text-[10px] text-charcoal-lighter mb-1">대신 바로 착석 가능한 빈 테이블:</p>
+                            <p className="text-[12px] text-charcoal-lighter mb-1">대신 바로 착석 가능한 빈 테이블:</p>
                             <div className="flex flex-wrap gap-1">
                               {manualMergePrompt.alternativeTables.slice(0, 4).map((t) => (
                                 <button
@@ -760,7 +915,7 @@ export default function ControlPanel() {
                                   onClick={() => {
                                     handleSeatAtAlternativeTable(table.id, manualMergePrompt.reservationId, t.id, t.label)
                                   }}
-                                  className="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-cream hover:bg-primary/10 text-charcoal border border-border transition-colors"
+                                  className="text-[12px] font-medium px-1.5 py-0.5 rounded-md bg-cream hover:bg-primary/10 text-charcoal border border-border transition-colors"
                                 >
                                   {t.label} · {t.seats}
                                 </button>
@@ -768,7 +923,7 @@ export default function ControlPanel() {
                             </div>
                           </div>
                         ) : (
-                          <p className="text-[10px] text-charcoal-lighter mt-1">현재는 수용 가능한 빈 테이블도 없습니다.</p>
+                          <p className="text-[12px] text-charcoal-lighter mt-1">현재는 수용 가능한 빈 테이블도 없습니다.</p>
                         )}
                       </>
                     )}

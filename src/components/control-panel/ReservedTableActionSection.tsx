@@ -16,7 +16,7 @@ export default function ReservedTableActionSection({
 
   return (
     <div className="space-y-2">
-      <div className="text-[11px] space-y-1">
+      <div className="text-[12px] space-y-1">
         <p className="font-medium text-charcoal">
           {linkedReservation.name}
           <span className="text-charcoal-lighter ml-1">({linkedReservation.partySize}명)</span>
@@ -28,7 +28,7 @@ export default function ReservedTableActionSection({
       </div>
       <button
         onClick={onSeat}
-        className="w-full inline-flex items-center justify-center gap-1.5 text-[11px] font-medium py-2 rounded-xl text-white bg-primary hover:bg-primary-dark transition-colors"
+        className="w-full inline-flex items-center justify-center gap-1.5 text-[12px] font-medium py-2 rounded-xl text-white bg-primary hover:bg-primary-dark transition-colors"
       >
         <Armchair size={13} />
         착석 처리
