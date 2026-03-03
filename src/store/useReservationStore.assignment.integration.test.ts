@@ -107,6 +107,34 @@ describe('useReservationStore integration (assignment)', () => {
     expect(dinnerStates.t2?.plannedBookings?.some((b) => b.reservationId === A.id)).toBe(true)
   })
 
+  test('store rejects addReservation when duration is outside 1~2 hours', () => {
+    const store = useReservationStore.getState()
+    const beforeCount = store.reservations.length
+
+    store.addReservation({
+      name: 'InvalidDuration',
+      partySize: 2,
+      period: 'dinner',
+      startTime: '19:00',
+      endTime: '21:30',
+      phone: '',
+      note: '',
+    })
+
+    expect(useReservationStore.getState().reservations.length).toBe(beforeCount)
+  })
+
+  test('store rejects updateReservation when resulting duration is outside 1~2 hours', () => {
+    const store = useReservationStore.getState()
+    const A = addReservation({ name: 'A', partySize: 2, startTime: '19:00', endTime: '20:30' })
+
+    store.updateReservation(A.id, { endTime: '21:30' })
+
+    const after = useReservationStore.getState().reservations.find((r) => r.id === A.id)
+    expect(after?.startTime).toBe('19:00')
+    expect(after?.endTime).toBe('20:30')
+  })
+
   test('same-start overlapping scopes auto-seat only one reservation after merged table clear', () => {
     const store = useReservationStore.getState()
 
@@ -220,6 +248,19 @@ describe('useReservationStore integration (assignment)', () => {
     const lunchStates = useReservationStore.getState().sessionData.lunch.tableStates
     expect(lunchStates.t1?.plannedBookings?.some((p) => p.reservationId === A.id)).toBe(true)
     expect(lunchStates.t1?.plannedBookings?.some((p) => p.reservationId === B.id)).toBe(true)
+  })
+
+  test('allows boundary-touching bookings on same table (end == next start)', () => {
+    const store = useReservationStore.getState()
+    store.setActiveSession('lunch')
+    const A = addReservation({ name: 'A', partySize: 2, startTime: '12:00', endTime: '13:00', period: 'lunch' })
+    const B = addReservation({ name: 'B', partySize: 2, startTime: '13:00', endTime: '14:00', period: 'lunch' })
+
+    store.setNextBookingMulti(['t1'], A.id, 'T1')
+    store.setNextBookingMulti(['t1'], B.id, 'T1')
+
+    const planned = useReservationStore.getState().sessionData.lunch.tableStates.t1?.plannedBookings ?? []
+    expect(planned.map((p) => p.reservationId)).toEqual([A.id, B.id])
   })
 
   test('keeps multiple same-start assignments visible in source table states after merged seat is occupied', () => {

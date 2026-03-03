@@ -3,12 +3,7 @@ import { X, UserPlus, Clock, Users, Phone, MessageSquare, Minus, Plus, Sun, Moon
 import { cn } from '@/lib/cn'
 import { useReservationStore } from '@/store/useReservationStore'
 import type { Reservation } from '@/data/dummy'
-import { getStartTimeOptions, getFixedEndTime, formatFrenchPhone } from '@/data/dummy'
-
-function toMinutes(time: string): number {
-  const [h, m] = time.split(':').map(Number)
-  return h * 60 + m
-}
+import { getStartTimeOptions, getFixedEndTime, formatFrenchPhone, timeToMinutes, isValidReservationWindow } from '@/data/dummy'
 
 function fromMinutes(total: number): string {
   const h = Math.floor(total / 60)
@@ -18,7 +13,7 @@ function fromMinutes(total: number): string {
 
 function buildEndTimeOptions(startTime: string): string[] {
   if (!startTime) return []
-  const start = toMinutes(startTime)
+  const start = timeToMinutes(startTime)
   const minEnd = start + 60
   const maxEnd = Math.min(start + 120, 23 * 60 + 45)
   const options: string[] = []
@@ -29,7 +24,7 @@ function buildEndTimeOptions(startTime: string): string[] {
 }
 
 function timesOverlap(startA: string, endA: string, startB: string, endB: string): boolean {
-  return toMinutes(startA) < toMinutes(endB) && toMinutes(startB) < toMinutes(endA)
+  return timeToMinutes(startA) < timeToMinutes(endB) && timeToMinutes(startB) < timeToMinutes(endA)
 }
 
 function normalizePhone(raw: string): string {
@@ -60,14 +55,14 @@ export default function NewReservationModal() {
   const maxCapacity = 16
   const concurrentAtSelectedStart = useMemo(() => {
     if (!startTime) return 0
-    const startMins = toMinutes(startTime)
+    const startMins = timeToMinutes(startTime)
     const overlapping = reservations
       .filter((r) => {
         if (editingReservation && r.id === editingReservation.id) return false
         if (r.period !== period) return false
         if (r.status === 'completed') return false
-        const rs = toMinutes(r.startTime)
-        const re = toMinutes(r.endTime)
+        const rs = timeToMinutes(r.startTime)
+        const re = timeToMinutes(r.endTime)
         return rs <= startMins && startMins < re
       })
       .reduce((sum, r) => sum + r.partySize, 0)
@@ -163,18 +158,17 @@ export default function NewReservationModal() {
     e.preventDefault()
     if (!name.trim() || !partySize || !startTime || !endTime) return
     setCapacityError(null)
-    if (toMinutes(endTime) <= toMinutes(startTime)) {
+    if (timeToMinutes(endTime) <= timeToMinutes(startTime)) {
       setCapacityError('종료 시간은 시작 시간보다 늦어야 합니다.')
       return
     }
-    const duration = toMinutes(endTime) - toMinutes(startTime)
-    if (duration < 60 || duration > 120) {
+    if (!isValidReservationWindow(startTime, endTime)) {
       setCapacityError('예약 종료 시간은 시작 시간 기준 1시간~2시간 내에서 선택해주세요.')
       return
     }
 
-    const candidateStart = toMinutes(startTime)
-    const candidateEnd = toMinutes(endTime)
+    const candidateStart = timeToMinutes(startTime)
+    const candidateEnd = timeToMinutes(endTime)
     const relevant = reservations.filter((r) => {
       if (editingReservation && r.id === editingReservation.id) return false
       if (r.period !== period) return false
@@ -185,15 +179,15 @@ export default function NewReservationModal() {
     const checkpoints = Array.from(new Set([
       candidateStart,
       ...relevant
-        .map((r) => toMinutes(r.startTime))
+        .map((r) => timeToMinutes(r.startTime))
         .filter((mins) => mins >= candidateStart && mins < candidateEnd),
     ])).sort((a, b) => a - b)
 
     for (const checkpoint of checkpoints) {
       const concurrent = partySize + relevant
         .filter((r) => {
-          const rs = toMinutes(r.startTime)
-          const re = toMinutes(r.endTime)
+          const rs = timeToMinutes(r.startTime)
+          const re = timeToMinutes(r.endTime)
           return rs <= checkpoint && checkpoint < re
         })
         .reduce((sum, r) => sum + r.partySize, 0)

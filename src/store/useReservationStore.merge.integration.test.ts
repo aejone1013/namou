@@ -208,4 +208,53 @@ describe('useReservationStore integration (merge)', () => {
     expect(seated?.mergedFrom?.map((o) => o.id).sort()).toEqual(['t17', 't18'])
   })
 
+  test('column merge allows near-column offset within threshold', () => {
+    const store = useReservationStore.getState()
+    store.setActiveSession('lunch')
+    const A = addReservation({ name: 'NearColumn', partySize: 4, startTime: '19:00', endTime: '20:30', period: 'lunch' })
+
+    // Keep T2 close enough to T1 column: |x diff| = 36 (<= 42).
+    store.moveTable('t2', 336, 480)
+    store.seatWithSelectedMerge(A.id, 't1', ['t2'])
+
+    const seated = useReservationStore.getState().getEffectiveTables().find((t) => t.currentTeam?.reservationId === A.id)
+    expect(seated).toBeTruthy()
+    expect(seated?.mergedFrom?.map((o) => o.id).sort()).toEqual(['t1', 't2'])
+  })
+
+  test('column merge rejects offset beyond threshold even with contiguous labels', () => {
+    const store = useReservationStore.getState()
+    store.setActiveSession('lunch')
+    const A = addReservation({ name: 'FarColumn', partySize: 4, startTime: '19:00', endTime: '20:30', period: 'lunch' })
+
+    // Push T2 too far from T1 column: |x diff| = 48 (> 42).
+    store.moveTable('t2', 348, 480)
+    store.seatWithSelectedMerge(A.id, 't1', ['t2'])
+
+    const state = useReservationStore.getState()
+    expect(state.sessionData.lunch.merges.length).toBe(0)
+    expect(state.reservations.find((r) => r.id === A.id)?.status).toBe('waiting')
+  })
+
+  test('T15/T16 manual merge works and merged position stays at original anchor', () => {
+    const store = useReservationStore.getState()
+    store.setActiveSession('lunch')
+    const A = addReservation({ name: 'EdgeColumn', partySize: 2, startTime: '12:00', endTime: '13:30', period: 'lunch' })
+
+    const before = useReservationStore.getState().tables
+    const t15 = before.find((t) => t.id === 't15')
+    const t16 = before.find((t) => t.id === 't16')
+    expect(t15).toBeTruthy()
+    expect(t16).toBeTruthy()
+
+    store.seatWithSelectedMerge(A.id, 't16', ['t15'])
+
+    const state = useReservationStore.getState()
+    const seated = state.getEffectiveTables().find((t) => t.currentTeam?.reservationId === A.id)
+    expect(seated).toBeTruthy()
+    expect(seated?.mergedFrom?.map((o) => o.id).sort()).toEqual(['t15', 't16'])
+    expect(seated?.x).toBe(Math.min(t15!.x, t16!.x))
+    expect(seated?.y).toBe(Math.min(t15!.y, t16!.y))
+  })
+
 })

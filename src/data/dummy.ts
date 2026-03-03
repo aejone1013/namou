@@ -141,6 +141,11 @@ export function timeToMinutes(time: string): number {
   return h * 60 + m
 }
 
+export function isValidReservationWindow(startTime: string, endTime: string): boolean {
+  const duration = timeToMinutes(endTime) - timeToMinutes(startTime)
+  return duration >= 60 && duration <= 120
+}
+
 export function getPeriodFromTime(time: string): 'lunch' | 'dinner' {
   const minutes = timeToMinutes(time)
   return minutes < 17 * 60 ? 'lunch' : 'dinner'

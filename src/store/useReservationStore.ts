@@ -9,7 +9,7 @@ import {
   TABLE_WIDTH, SNAP_SIZE, snapToGrid, getCurrentTimeHHMM,
   getTableNumber, isContiguousRange, getMergeLabel, getMergedTableHeight, compareTableLabel,
   TABLE_BASE_HEIGHT, TABLE_FIXED_SEATS, TABLES_PER_COLUMN,
-  createDefaultTables, timeToMinutes,
+  createDefaultTables, timeToMinutes, isValidReservationWindow,
 } from '@/data/dummy'
 
 const CANVAS_SIZE = TABLES_PER_COLUMN * TABLE_BASE_HEIGHT  // 648
@@ -306,6 +306,7 @@ export const useReservationStore = create<ReservationStore>()(
       // ── Reservation Actions ─────────────────────────────────────────────────
       addReservation: (data) =>
         set((state) => {
+          if (!isValidReservationWindow(data.startTime, data.endTime)) return state
           const id = getNextId(state.reservations, 'r')
           return {
             reservations: [...state.reservations, { ...data, id, status: 'waiting' }],
@@ -318,6 +319,9 @@ export const useReservationStore = create<ReservationStore>()(
         set((state) => {
           const reservation = state.reservations.find((r) => r.id === id)
           if (!reservation) return state
+          const nextStartTime = data.startTime ?? reservation.startTime
+          const nextEndTime = data.endTime ?? reservation.endTime
+          if (!isValidReservationWindow(nextStartTime, nextEndTime)) return state
 
           const oldSession = reservation.period
           const newSession = (data.period ?? oldSession) as 'lunch' | 'dinner'
