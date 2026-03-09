@@ -66,8 +66,6 @@ export default function ControlPanel() {
   const [walkInEndTime, setWalkInEndTime] = useState(getFixedEndTime(initialWalkInStart))
   const [showMoveSelect, setShowMoveSelect] = useState(false)
   const [showNextBookingSelect, setShowNextBookingSelect] = useState(false)
-  const [showWalkInMergeSelect, setShowWalkInMergeSelect] = useState(false)
-  const [selectedWalkInMergeTableIds, setSelectedWalkInMergeTableIds] = useState<string[]>([])
   const [selectedMergeTableIds, setSelectedMergeTableIds] = useState<string[]>([])
   const [pendingSeatMergeReservationId, setPendingSeatMergeReservationId] = useState<string | null>(null)
 
@@ -80,8 +78,6 @@ export default function ControlPanel() {
     setWalkInEndTime(getFixedEndTime(base))
     setShowMoveSelect(false)
     setShowNextBookingSelect(false)
-    setShowWalkInMergeSelect(false)
-    setSelectedWalkInMergeTableIds([])
     setSelectedMergeTableIds([])
     setPendingSeatMergeReservationId(null)
   }
@@ -259,11 +255,6 @@ export default function ControlPanel() {
         }
       }
     }
-    if (walkInSize > table.seats) {
-      setShowWalkInMergeSelect(true)
-      return
-    }
-
     walkInTable(tableId, walkInSize, walkInName.trim() || undefined, walkInStartTime, walkInEndTime)
     const after = useReservationStore.getState()
     const occupied = after.getEffectiveTables().find((t) => t.id === tableId || t.mergedFrom?.some((o) => o.id === tableId))
@@ -275,7 +266,7 @@ export default function ControlPanel() {
   }
 
   const walkInMergeCandidates = (() => {
-    if (!table || table.status !== 'available' || walkInSize <= table.seats) return []
+    if (!table || table.status !== 'available') return []
     const baseTableIds = new Set(store.tables.map((t) => t.id))
     return effectiveTables
       .filter((t) => t.id !== table.id)
@@ -291,20 +282,8 @@ export default function ControlPanel() {
       })
   })()
 
-  const selectedWalkInMergeTables = walkInMergeCandidates.filter((t) => selectedWalkInMergeTableIds.includes(t.id))
-  const selectedWalkInTotalSeats = (table?.seats ?? 0) + selectedWalkInMergeTables.reduce((sum, t) => sum + t.seats, 0)
-  const selectedWalkInNums = table
-    ? [getTableNumber(table.label), ...selectedWalkInMergeTables.map((t) => getTableNumber(t.label))]
-    : []
-  const isContiguousWalkInSelection = selectedWalkInNums.length > 0 ? isContiguousRange(selectedWalkInNums) : false
-  const canSubmitWalkInMerge =
-    !!table &&
-    walkInSize > table.seats &&
-    selectedWalkInTotalSeats >= walkInSize &&
-    isContiguousWalkInSelection
-
-  const handleSubmitWalkInMerge = () => {
-    if (!table || !canSubmitWalkInMerge) return
+  const handleSubmitWalkInMerge = (selectedIds: string[]) => {
+    if (!table) return
     if (timeToMinutes(walkInEndTime) <= timeToMinutes(walkInStartTime)) {
       toast.show('워크인 종료 시간은 시작 시간보다 늦어야 합니다.', 'error')
       return
@@ -314,7 +293,7 @@ export default function ControlPanel() {
       tableId,
       walkInSize,
       walkInName.trim() || undefined,
-      selectedWalkInMergeTableIds,
+      selectedIds,
       walkInStartTime,
       walkInEndTime
     )
@@ -666,72 +645,9 @@ export default function ControlPanel() {
                   setPendingSeatMergeReservationId(reservationId)
                 }}
                 onWalkIn={handleWalkIn}
+                walkInMergeCandidates={walkInMergeCandidates}
+                onSubmitWalkInMerge={handleSubmitWalkInMerge}
               />
-
-              {table.status === 'available' && showWalkIn && showWalkInMergeSelect && walkInSize > table.seats && (
-                <div className="border-t border-border pt-2">
-                  <div className="rounded-xl border border-primary/20 bg-primary/5 px-2.5 py-2 space-y-2">
-                    <p className="text-[12px] font-medium text-charcoal">
-                      워크인 {walkInSize}명 병합 배정
-                    </p>
-                    <p className="text-[12px] text-charcoal-lighter">
-                      병합할 테이블을 선택하세요. (기준: {table.label} {table.seats}석)
-                    </p>
-                    <div className="flex flex-wrap gap-1">
-                      {walkInMergeCandidates.map((candidate) => {
-                        const active = selectedWalkInMergeTableIds.includes(candidate.id)
-                        return (
-                          <button
-                            key={candidate.id}
-                            onClick={() =>
-                              setSelectedWalkInMergeTableIds((prev) =>
-                                prev.includes(candidate.id)
-                                  ? prev.filter((id) => id !== candidate.id)
-                                  : [...prev, candidate.id]
-                              )
-                            }
-                            className={cn(
-                              'text-[12px] font-medium px-1.5 py-0.5 rounded-md border transition-colors',
-                              active
-                                ? 'bg-primary text-white border-primary'
-                                : 'bg-cream text-charcoal border-border hover:border-primary/40 hover:bg-primary/10'
-                            )}
-                          >
-                            {candidate.label} · {candidate.seats}
-                          </button>
-                        )
-                      })}
-                    </div>
-                    <p className={cn(
-                      'text-[12px]',
-                      canSubmitWalkInMerge ? 'text-available' : 'text-charcoal-lighter'
-                    )}>
-                      선택 좌석: {selectedWalkInTotalSeats} / 필요 좌석: {walkInSize}
-                    </p>
-                    {selectedWalkInMergeTableIds.length > 0 && !isContiguousWalkInSelection && (
-                      <p className="text-[12px] text-occupied">연속된 테이블만 함께 병합할 수 있습니다.</p>
-                    )}
-                    <div className="flex gap-1.5">
-                      <button
-                        onClick={() => {
-                          setShowWalkInMergeSelect(false)
-                          setSelectedWalkInMergeTableIds([])
-                        }}
-                        className="flex-1 text-[12px] font-medium py-1.5 rounded-lg bg-surface border border-border text-charcoal-light hover:bg-border transition-colors"
-                      >
-                        취소
-                      </button>
-                      <button
-                        onClick={handleSubmitWalkInMerge}
-                        disabled={!canSubmitWalkInMerge}
-                        className="flex-1 text-[12px] font-medium py-1.5 rounded-lg bg-primary text-white hover:bg-primary-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        선택 병합으로 배정
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
 
               <NextBookingSection
                 table={table}

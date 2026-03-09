@@ -1,5 +1,8 @@
+import { useState } from 'react'
 import { Info, Minus, Plus, UserPlus, Users } from 'lucide-react'
+import { cn } from '@/lib/cn'
 import type { Reservation, TableInfo } from '@/data/dummy'
+import { getTableNumber, isContiguousRange } from '@/data/dummy'
 
 interface AvailableTableActionsProps {
   table: TableInfo
@@ -17,6 +20,8 @@ interface AvailableTableActionsProps {
   hideEmptyWaitingMessage?: boolean
   onSeatReservation: (reservationId: string) => void
   onWalkIn: () => void
+  walkInMergeCandidates: TableInfo[]
+  onSubmitWalkInMerge: (selectedIds: string[]) => void
 }
 
 export default function AvailableTableActions({
@@ -35,7 +40,28 @@ export default function AvailableTableActions({
   hideEmptyWaitingMessage = false,
   onSeatReservation,
   onWalkIn,
+  walkInMergeCandidates,
+  onSubmitWalkInMerge,
 }: AvailableTableActionsProps) {
+  const [showWalkInMergeSelect, setShowWalkInMergeSelect] = useState(false)
+  const [selectedWalkInMergeTableIds, setSelectedWalkInMergeTableIds] = useState<string[]>([])
+  const [forceWalkInMerge, setForceWalkInMerge] = useState(false)
+
+  const selectedWalkInMergeTables = walkInMergeCandidates.filter((t) => selectedWalkInMergeTableIds.includes(t.id))
+  const selectedWalkInTotalSeats = table.seats + selectedWalkInMergeTables.reduce((sum, t) => sum + t.seats, 0)
+  const selectedWalkInNums = [getTableNumber(table.label), ...selectedWalkInMergeTables.map((t) => getTableNumber(t.label))]
+  const isContiguousWalkInSelection = selectedWalkInNums.length > 0 ? isContiguousRange(selectedWalkInNums) : false
+  const canSubmitWalkInMerge =
+    selectedWalkInMergeTableIds.length > 0 &&
+    selectedWalkInTotalSeats >= walkInSize &&
+    isContiguousWalkInSelection
+
+  const resetMergeState = () => {
+    setShowWalkInMergeSelect(false)
+    setSelectedWalkInMergeTableIds([])
+    setForceWalkInMerge(false)
+  }
+
   if (table.status !== 'available') return null
 
   return (
@@ -61,7 +87,7 @@ export default function AvailableTableActions({
             />
             <div className="flex items-center gap-1.5">
               <button
-                onClick={() => setWalkInSize(Math.max(2, walkInSize - 1))}
+                onClick={() => setWalkInSize(Math.max(1, walkInSize - 1))}
                 className="w-6 h-6 flex items-center justify-center rounded-md bg-surface border border-border text-charcoal-light hover:border-primary/50 transition-colors"
               >
                 <Minus size={10} />
@@ -97,18 +123,112 @@ export default function AvailableTableActions({
               />
             </label>
           </div>
-          {walkInSize > table.seats && (
-            <p className="text-[12px] text-charcoal-lighter">
-              현재 테이블 좌석({table.seats})을 초과하여 병합 배정이 시도됩니다.
-            </p>
+
+          {/* 강제 병합 토글 */}
+          {walkInMergeCandidates.length > 0 && (
+            <label className="flex items-center gap-1.5 text-[12px] text-charcoal-light cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={forceWalkInMerge}
+                onChange={(e) => {
+                  setForceWalkInMerge(e.target.checked)
+                  if (e.target.checked) {
+                    setShowWalkInMergeSelect(true)
+                  } else {
+                    setShowWalkInMergeSelect(false)
+                    setSelectedWalkInMergeTableIds([])
+                  }
+                }}
+                className="rounded"
+              />
+              테이블 병합
+            </label>
           )}
+
+          {/* 병합 UI */}
+          {(showWalkInMergeSelect) && (
+            <div className="rounded-xl border border-primary/20 bg-primary/5 px-2.5 py-2 space-y-2">
+              <p className="text-[12px] font-medium text-charcoal">
+                {walkInSize}명 병합 배정
+              </p>
+              <p className="text-[12px] text-charcoal-lighter">
+                병합할 테이블을 선택하세요. (기준: {table.label} {table.seats}석)
+              </p>
+              {walkInMergeCandidates.length > 0 ? (
+                <div className="flex flex-wrap gap-1">
+                  {walkInMergeCandidates.map((candidate) => {
+                    const active = selectedWalkInMergeTableIds.includes(candidate.id)
+                    return (
+                      <button
+                        key={candidate.id}
+                        onClick={() =>
+                          setSelectedWalkInMergeTableIds((prev) =>
+                            prev.includes(candidate.id)
+                              ? prev.filter((id) => id !== candidate.id)
+                              : [...prev, candidate.id]
+                          )
+                        }
+                        className={cn(
+                          'text-[12px] font-medium px-1.5 py-0.5 rounded-md border transition-colors',
+                          active
+                            ? 'bg-primary text-white border-primary'
+                            : 'bg-cream text-charcoal border-border hover:border-primary/40 hover:bg-primary/10'
+                        )}
+                      >
+                        {candidate.label} · {candidate.seats}
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : (
+                <p className="text-[12px] text-charcoal-lighter">병합 가능한 인접 테이블이 없습니다.</p>
+              )}
+              <p className={cn(
+                'text-[12px]',
+                canSubmitWalkInMerge ? 'text-available' : 'text-charcoal-lighter'
+              )}>
+                선택 좌석: {selectedWalkInTotalSeats} / 필요 좌석: {walkInSize}
+              </p>
+              {selectedWalkInMergeTableIds.length > 0 && !isContiguousWalkInSelection && (
+                <p className="text-[12px] text-occupied">연속된 테이블만 함께 병합할 수 있습니다.</p>
+              )}
+              <button
+                onClick={() => {
+                  onSubmitWalkInMerge(selectedWalkInMergeTableIds)
+                  resetMergeState()
+                }}
+                disabled={!canSubmitWalkInMerge}
+                className="w-full text-[12px] font-medium py-1.5 rounded-lg bg-primary text-white hover:bg-primary-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                선택 병합으로 배정
+              </button>
+            </div>
+          )}
+
           <div className="flex gap-1.5">
-            <button onClick={() => setShowWalkIn(false)} className="flex-1 text-[12px] font-medium py-1.5 rounded-lg bg-surface border border-border text-charcoal-light hover:bg-border transition-colors">
+            <button
+              onClick={() => {
+                setShowWalkIn(false)
+                resetMergeState()
+              }}
+              className="flex-1 text-[12px] font-medium py-1.5 rounded-lg bg-surface border border-border text-charcoal-light hover:bg-border transition-colors"
+            >
               취소
             </button>
-            <button onClick={onWalkIn} className="flex-1 text-[12px] font-medium py-1.5 rounded-lg bg-primary text-white hover:bg-primary-dark transition-colors">
-              배정
-            </button>
+            {!showWalkInMergeSelect && (
+              <button
+                onClick={() => {
+                  if (walkInSize > table.seats) {
+                    setShowWalkInMergeSelect(true)
+                    return
+                  }
+                  onWalkIn()
+                }}
+                className="flex-1 text-[12px] font-medium py-1.5 rounded-lg bg-primary text-white hover:bg-primary-dark transition-colors"
+              >
+                배정
+              </button>
+            )}
           </div>
         </div>
       )}

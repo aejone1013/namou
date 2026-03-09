@@ -113,10 +113,12 @@ export default function TableShape({ table }: TableShapeProps) {
         </span>
       )}
 
-      {/* Walk-in: show seatedAt time */}
+      {/* Walk-in: show end time */}
       {table.currentTeam && !linkedReservation && (
-        <span className="text-[8px] text-charcoal-lighter leading-none mt-0.5">
-          {table.currentTeam.seatedAt}~
+        <span className="text-[9px] text-occupied font-bold leading-none mt-0.5">
+          {table.currentTeam.endTime
+            ? `~${table.currentTeam.endTime}`
+            : `${table.currentTeam.seatedAt}~`}
         </span>
       )}
 

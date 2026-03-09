@@ -26,7 +26,7 @@ function createWindow() {
   })
 
   win.once('ready-to-show', () => {
-    win.webContents.setZoomFactor(0.9)
+    win.webContents.setZoomFactor(1.0)
     win.setFullScreen(true)
     win.show()
   })

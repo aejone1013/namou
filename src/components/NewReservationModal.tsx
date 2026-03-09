@@ -52,7 +52,7 @@ export default function NewReservationModal() {
   const isEditing = !!editingReservation
 
   const startTimeOptions = getStartTimeOptions(period)
-  const maxCapacity = 16
+  const maxCapacity = 999
   const concurrentAtSelectedStart = useMemo(() => {
     if (!startTime) return 0
     const startMins = timeToMinutes(startTime)
@@ -482,6 +482,22 @@ export default function NewReservationModal() {
                 </div>
                 <div className="mt-2 pt-2 border-t border-border">
                   <label className="text-[12px] font-medium text-charcoal-light">
+                    또는 직접 입력
+                  </label>
+                  <input
+                    type="time"
+                    step={900}
+                    value={startTime}
+                    onChange={(e) => {
+                      handleStartTimeChange(e.target.value)
+                      if (duplicateCandidates.length > 0) setDuplicateCandidates([])
+                      if (capacityError) setCapacityError(null)
+                    }}
+                    className="mt-1 w-full rounded-lg border border-border bg-surface px-2 py-1.5 text-[12px] text-charcoal focus:outline-none focus:border-primary/50"
+                  />
+                </div>
+                <div className="mt-2 pt-2 border-t border-border">
+                  <label className="text-[12px] font-medium text-charcoal-light">
                     종료 시간 <span className="text-occupied">*</span>
                   </label>
                   <select
@@ -499,14 +515,11 @@ export default function NewReservationModal() {
                     ))}
                   </select>
                 </div>
-                <div className="mt-1 text-[12px] text-charcoal-lighter">
-                  최대 수용 {maxCapacity}명
-                  {startTime && (
-                    <span className={cn('ml-1', concurrentAtSelectedStart > maxCapacity ? 'text-occupied font-semibold' : 'text-charcoal-light')}>
-                      · 선택시간 동시 인원 {concurrentAtSelectedStart}명
-                    </span>
-                  )}
-                </div>
+                {startTime && (
+                  <div className="mt-1 text-[12px] text-charcoal-lighter">
+                    선택시간 동시 인원 {concurrentAtSelectedStart}명
+                  </div>
+                )}
               </div>
             </div>
 

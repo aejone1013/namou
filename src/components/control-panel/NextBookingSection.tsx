@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
-import { CalendarClock, Users, X } from 'lucide-react'
+import { ArrowLeftRight, CalendarClock, Users, X } from 'lucide-react'
 import { cn } from '@/lib/cn'
-import { getMergeLabel, getTableNumber } from '@/data/dummy'
+import { compareTableLabel, getMergeLabel, getTableNumber } from '@/data/dummy'
 import type { Reservation, TableInfo } from '@/data/dummy'
 import { useReservationStore } from '@/store/useReservationStore'
 import { bookingConflictsOnSameTable, bookingScopesOverlap } from '@/store/plannedBookingPolicies'
@@ -37,6 +37,7 @@ export default function NextBookingSection({
   const store = useReservationStore()
   const toast = useToastStore()
   const [pendingMergeReservationId, setPendingMergeReservationId] = useState<string | null>(null)
+  const [movingBookingReservationId, setMovingBookingReservationId] = useState<string | null>(null)
   const effectiveTables = store.getEffectiveTables()
   const isSameColumn = (a: { x: number }, b: { x: number }) => Math.abs(a.x - b.x) <= 42
   const activeSession = store.activeSession
@@ -390,37 +391,95 @@ export default function NextBookingSection({
             <div className="rounded-lg border border-reserved/15 bg-surface/70 px-2 py-1.5">
               <p className="text-[12px] font-medium text-charcoal mb-1">예약 배정 {displayPlannedBookings.length}건</p>
               <div className="space-y-1">
-                {displayPlannedBookings.map((booking) => (
-                  <div
-                    key={`${booking.reservationId}-${booking.startTime}-${booking.targetLabel ?? ''}`}
-                    className="flex items-center justify-between gap-2 text-[12px] rounded-md px-1 py-0.5 hover:bg-reserved/5"
-                    onMouseEnter={() => {
-                      const scope = getBookingScopeIds(booking)
-                      if (scope.length > 0) store.setMergePreviewTableIds(scope)
-                    }}
-                    onMouseLeave={() => store.setMergePreviewTableIds([])}
-                    >
-                    <div className="min-w-0">
-                      <p className="text-charcoal leading-tight">
-                        <span className="truncate inline-block max-w-[112px] align-bottom">{booking.name}</span>
-                        <span className="text-charcoal-lighter ml-1">({booking.partySize})</span>
-                      </p>
-                      <p className="text-charcoal-lighter leading-tight">
-                        {booking.startTime} ~ {booking.endTime}
-                        {getBookingDisplayLabel(booking) ? ` · ${getBookingDisplayLabel(booking)}` : ''}
-                      </p>
-                    </div>
-                    <div className="shrink-0 flex items-center gap-1">
-                      <button
-                        onClick={() => store.clearNextBookingByReservation(booking.reservationId)}
-                        className="text-charcoal-lighter hover:text-occupied transition-colors"
-                        title="이 예약 배정 해제"
+                {displayPlannedBookings.map((booking) => {
+                  const isMoving = movingBookingReservationId === booking.reservationId
+                  const availableForMove = effectiveTables
+                    .filter((t) => t.status === 'available' && t.seats >= booking.partySize)
+                    .filter((t) => {
+                      const planned = sessionTableStates[t.id]?.plannedBookings ?? (sessionTableStates[t.id]?.nextBooking ? [sessionTableStates[t.id]!.nextBooking!] : [])
+                      return !planned.some((b) =>
+                        bookingConflictsOnSameTable(
+                          b,
+                          { startTime: booking.startTime, endTime: booking.endTime },
+                          booking.reservationId
+                        )
+                      )
+                    })
+                    .sort((a, b) => compareTableLabel(a.label, b.label))
+
+                  return (
+                    <div key={`${booking.reservationId}-${booking.startTime}-${booking.targetLabel ?? ''}`}>
+                      <div
+                        className="flex items-center justify-between gap-2 text-[12px] rounded-md px-1 py-0.5 hover:bg-reserved/5"
+                        onMouseEnter={() => {
+                          const scope = getBookingScopeIds(booking)
+                          if (scope.length > 0) store.setMergePreviewTableIds(scope)
+                        }}
+                        onMouseLeave={() => store.setMergePreviewTableIds([])}
                       >
-                        <X size={11} />
-                      </button>
+                        <div className="min-w-0">
+                          <p className="text-charcoal leading-tight">
+                            <span className="truncate inline-block max-w-[112px] align-bottom">{booking.name}</span>
+                            <span className="text-charcoal-lighter ml-1">({booking.partySize})</span>
+                          </p>
+                          <p className="text-charcoal-lighter leading-tight">
+                            {booking.startTime} ~ {booking.endTime}
+                            {getBookingDisplayLabel(booking) ? ` · ${getBookingDisplayLabel(booking)}` : ''}
+                          </p>
+                        </div>
+                        <div className="shrink-0 flex items-center gap-1">
+                          <button
+                            onClick={() => setMovingBookingReservationId(isMoving ? null : booking.reservationId)}
+                            className={cn(
+                              'transition-colors',
+                              isMoving ? 'text-primary' : 'text-charcoal-lighter hover:text-primary'
+                            )}
+                            title="테이블 변경"
+                          >
+                            <ArrowLeftRight size={11} />
+                          </button>
+                          <button
+                            onClick={() => store.clearNextBookingByReservation(booking.reservationId)}
+                            className="text-charcoal-lighter hover:text-occupied transition-colors"
+                            title="이 예약 배정 해제"
+                          >
+                            <X size={11} />
+                          </button>
+                        </div>
+                      </div>
+                      {isMoving && (
+                        <div className="mt-1 mb-1 px-1 space-y-1">
+                          <p className="text-[11px] text-charcoal-lighter">이동할 테이블 선택:</p>
+                          {availableForMove.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {availableForMove.map((t) => (
+                                <button
+                                  key={t.id}
+                                  onClick={() => {
+                                    store.clearNextBookingByReservation(booking.reservationId)
+                                    store.setNextBookingMulti([t.id], booking.reservationId, t.label)
+                                    setMovingBookingReservationId(null)
+                                  }}
+                                  className="text-[11px] font-medium px-1.5 py-0.5 rounded-md bg-cream hover:bg-primary/10 text-charcoal border border-border transition-colors"
+                                >
+                                  {t.label} · {t.seats}석
+                                </button>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-[11px] text-charcoal-lighter">이동 가능한 테이블이 없습니다.</p>
+                          )}
+                          <button
+                            onClick={() => setMovingBookingReservationId(null)}
+                            className="text-[11px] text-charcoal-lighter hover:text-charcoal"
+                          >
+                            취소
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )}
