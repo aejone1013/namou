@@ -37,17 +37,8 @@
     ],
     "win": {
       "icon": "build/icon.ico",
-      "target": [
-        "nsis",
-        "portable"
-      ],
+      "target": "portable",
       "artifactName": "namou-${version}.${ext}"
-    },
-    "nsis": {
-      "artifactName": "namou-${version}-setup.${ext}",
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "shortcutName": "namou"
     },
     "portable": {
       "artifactName": "namou-${version}-portable.${ext}"
