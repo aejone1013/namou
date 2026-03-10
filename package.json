@@ -1,7 +1,7 @@
 {
   "name": "namou",
   "private": true,
-  "version": "1.1.1",
+  "version": "1.1.2",
   "author": "aejone1013",
   "description": "namou - Restaurant Reservation System",
   "type": "module",
