@@ -531,7 +531,7 @@ export default function ControlPanel() {
   })()
 
   return (
-    <aside className="w-[clamp(198px,13vw,224px)] min-w-[198px] h-full bg-surface border-l border-border flex flex-col overflow-y-auto">
+    <aside className="w-full md:w-[clamp(198px,13vw,224px)] md:min-w-[198px] h-full bg-surface md:border-l border-border flex flex-col overflow-y-auto">
       {/* Section: TableEditPanel (edit mode) */}
       {isEditMode && (
         <div className="overflow-y-auto flex-1">

@@ -3,3 +3,10 @@ dist
 dist-electron
 *.log
 release
+
+# Android (Capacitor)
+android/app/build
+android/.gradle
+android/build
+android/local.properties
+*.apk

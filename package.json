@@ -23,7 +23,12 @@
     "electron:build": "vite build && tsc -p tsconfig.node.json && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --config.win.signAndEditExecutable=false",
     "electron:build:clean": "node -e \"require('fs').rmSync('release',{ recursive:true, force:true })\" && npm run electron:build && node -e \"require('fs').rmSync('release/win-unpacked',{ recursive:true, force:true })\"",
     "electron:build:signed": "vite build && tsc -p tsconfig.node.json && electron-builder",
-    "electron:build:signed:clean": "node -e \"require('fs').rmSync('release',{ recursive:true, force:true })\" && npm run electron:build:signed && node -e \"require('fs').rmSync('release/win-unpacked',{ recursive:true, force:true })\""
+    "electron:build:signed:clean": "node -e \"require('fs').rmSync('release',{ recursive:true, force:true })\" && npm run electron:build:signed && node -e \"require('fs').rmSync('release/win-unpacked',{ recursive:true, force:true })\"",
+    "cap:sync": "vite build && npx cap sync android",
+    "cap:open": "npx cap open android",
+    "cap:run": "npx cap run android",
+    "android:apk": "vite build && npx cap sync android && cd android && ./gradlew assembleDebug && echo '✓ APK: android/app/build/outputs/apk/debug/app-debug.apk'",
+    "android:apk:release": "vite build && npx cap sync android && cd android && ./gradlew assembleRelease && echo '✓ APK: android/app/build/outputs/apk/release/app-release-unsigned.apk'"
   },
   "build": {
     "appId": "com.namou.app",
@@ -45,6 +50,9 @@
     }
   },
   "dependencies": {
+    "@capacitor/android": "^8.2.0",
+    "@capacitor/app": "^8.0.1",
+    "@capacitor/core": "^8.2.0",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/utilities": "^3.2.2",
     "clsx": "^2.1.1",
@@ -55,6 +63,7 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.2.0",
     "@tailwindcss/vite": "^4.1.18",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

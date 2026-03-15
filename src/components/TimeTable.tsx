@@ -98,7 +98,7 @@ export default function TimeTable({ onClose }: TimeTableProps) {
   }, [times])
 
   return (
-    <aside className="w-[clamp(272px,18vw,312px)] min-w-[272px] h-full bg-surface border-l border-border flex flex-col shadow-xl">
+    <aside className="w-full md:w-[clamp(272px,18vw,312px)] md:min-w-[272px] h-full bg-surface md:border-l border-border flex flex-col md:shadow-xl">
       {/* 헤더 */}
       <div className="h-11 px-3 border-b border-border flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">

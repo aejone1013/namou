@@ -116,6 +116,11 @@ textarea:focus-visible {
   animation: zoom-in-95 0.2s ease-out;
 }
 
+/* Safe area for mobile bottom navigation */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
 /* POS/tablet ergonomics: larger targets on touch devices */
 @media (min-width: 2200px) {
   html {
@@ -148,5 +153,23 @@ textarea:focus-visible {
   select,
   textarea {
     min-height: 42px;
+  }
+}
+
+/* Mobile-specific styles */
+@media (max-width: 767px) {
+  html {
+    font-size: 16px;
+  }
+
+  /* 모바일에서 스크롤바 숨김 */
+  ::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+
+  /* 터치 시 하이라이트 제거 */
+  * {
+    -webkit-tap-highlight-color: transparent;
   }
 }

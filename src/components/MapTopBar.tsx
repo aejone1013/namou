@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Users, Sun, Moon, Clock, Settings, Pencil, RotateCcw, Trash2, LogOut } from 'lucide-react'
 import { cn } from '@/lib/cn'
+import { useMobileLayout } from '@/hooks/useMobileLayout'
+import { getPlatform } from '@/lib/platform'
 import { useReservationStore } from '@/store/useReservationStore'
 import { useToastStore } from '@/store/useToastStore'
 import { toastActions, toastMessages } from '@/features/toast/toastPresets'
@@ -13,6 +15,8 @@ interface MapTopBarProps {
 export default function MapTopBar({ showTimeTable, onToggleTimeTable }: MapTopBarProps) {
   const store = useReservationStore()
   const toast = useToastStore()
+  const isMobile = useMobileLayout()
+  const platform = getPlatform()
   const menuRef = useRef<HTMLDivElement>(null)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [confirmAction, setConfirmAction] = useState<'reservations' | 'setup' | null>(null)
@@ -182,6 +186,7 @@ export default function MapTopBar({ showTimeTable, onToggleTimeTable }: MapTopBa
                 <Trash2 size={12} />
                 {confirmAction === 'setup' ? '한 번 더 누르면 설정 초기화' : '설정 초기화'}
               </button>
+              {platform !== 'android' && (
               <button
                 onClick={handleQuitApp}
                 className="w-full inline-flex items-center gap-1.5 text-[12px] font-semibold px-2 py-1.5 rounded-lg bg-charcoal/10 hover:bg-charcoal/20 text-charcoal transition-colors"
@@ -189,12 +194,13 @@ export default function MapTopBar({ showTimeTable, onToggleTimeTable }: MapTopBa
                 <LogOut size={12} />
                 앱 나가기
               </button>
+              )}
               </div>
             </div>
           )}
         </div>
 
-        {onToggleTimeTable && (
+        {onToggleTimeTable && !isMobile && (
           <button
             onClick={onToggleTimeTable}
             className={cn(

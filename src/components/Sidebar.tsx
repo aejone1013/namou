@@ -72,7 +72,7 @@ export default function Sidebar() {
   )
 
   return (
-    <aside className="w-[clamp(300px,21vw,360px)] min-w-[300px] h-full bg-surface border-r border-border flex flex-col">
+    <aside className="w-full md:w-[clamp(300px,21vw,360px)] md:min-w-[300px] h-full bg-surface md:border-r border-border flex flex-col">
       {/* Header */}
       <div className="p-4 pb-3">
         <div className="flex items-center justify-between mb-4">
