@@ -119,8 +119,8 @@ describe('useReservationStore integration (walkin)', () => {
     const store = useReservationStore.getState()
     store.setActiveSession('lunch')
 
-    // Block all same-group neighbors for T7.
-    for (const id of ['t1', 't2', 't3', 't4', 't5', 't6']) {
+    // Block all same-column neighbors for T7, including T8.
+    for (const id of ['t1', 't2', 't3', 't4', 't5', 't6', 't8']) {
       store.walkInTable(id, 2, `Block-${id}`)
     }
 
@@ -131,6 +131,17 @@ describe('useReservationStore integration (walkin)', () => {
     expect(merged).toBeFalsy()
     const t7 = tables.find((t) => t.id === 't7')
     expect(t7?.status).toBe('available')
+  })
+
+  test('walkInTable can auto-merge T7 with T8 in the same column', () => {
+    const store = useReservationStore.getState()
+    store.setActiveSession('lunch')
+
+    store.walkInTable('t7', 4, 'TopPair')
+
+    const merged = useReservationStore.getState().getEffectiveTables().find((t) => t.currentTeam?.name === 'TopPair')
+    expect(merged).toBeTruthy()
+    expect(merged?.mergedFrom?.map((o) => o.id).sort()).toEqual(['t7', 't8'])
   })
 
   test('walkInTable does nothing on already occupied table', () => {

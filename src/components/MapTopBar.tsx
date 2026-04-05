@@ -55,6 +55,16 @@ export default function MapTopBar({ showTimeTable, onToggleTimeTable }: MapTopBa
     return () => document.removeEventListener('mousedown', onClickOutside)
   }, [])
 
+  useEffect(() => {
+    const handleCloseTransientUi = () => {
+      setIsSettingsOpen(false)
+      setConfirmAction(null)
+    }
+
+    window.addEventListener('namou:request-close-transient-ui', handleCloseTransientUi)
+    return () => window.removeEventListener('namou:request-close-transient-ui', handleCloseTransientUi)
+  }, [])
+
   const handleQuitApp = () => {
     if (!window.confirm('앱을 종료할까요?')) return
     if (window.namouDesktop?.quitApp) {
@@ -65,38 +75,47 @@ export default function MapTopBar({ showTimeTable, onToggleTimeTable }: MapTopBa
   }
 
   return (
-    <div className="relative z-[60] overflow-visible h-11 flex items-center justify-between px-4 bg-surface/70 backdrop-blur-sm border-b border-border">
+    <div
+      className={cn(
+        'relative z-[60] overflow-visible bg-surface/70 backdrop-blur-sm border-b border-border',
+        isMobile
+          ? 'safe-area-top min-h-[calc(52px+env(safe-area-inset-top,0px))] px-3 py-2 flex items-center justify-between gap-2'
+          : 'h-11 flex items-center justify-between px-4'
+      )}
+    >
       <div className="flex items-center gap-2.5 min-w-0">
-        <div className="flex items-center gap-1 bg-cream rounded-lg p-0.5">
+        <div className="flex items-center gap-1 bg-cream rounded-lg p-1">
           <button
             onClick={() => setActiveSession('lunch')}
             className={cn(
-              'inline-flex items-center gap-1 text-[12px] font-medium px-2.5 py-1 rounded-md transition-all duration-150',
+              'inline-flex items-center gap-1 text-[12px] font-medium rounded-md transition-all duration-150 min-h-[40px]',
+              isMobile ? 'px-3' : 'px-2.5 py-1',
               activeSession === 'lunch'
                 ? 'bg-[#F3D17A] text-[#3A2412] border border-[#D0A642] shadow-sm'
                 : 'text-charcoal-lighter hover:text-charcoal-light hover:bg-surface/60'
             )}
           >
-            <Sun size={11} />
+            <Sun size={isMobile ? 13 : 11} />
             점심
           </button>
           <button
             onClick={() => setActiveSession('dinner')}
             className={cn(
-              'inline-flex items-center gap-1 text-[12px] font-medium px-2.5 py-1 rounded-md transition-all duration-150',
+              'inline-flex items-center gap-1 text-[12px] font-medium rounded-md transition-all duration-150 min-h-[40px]',
+              isMobile ? 'px-3' : 'px-2.5 py-1',
               activeSession === 'dinner'
                 ? 'bg-[#5A6FAE] text-white border border-[#4A5F9A] shadow-sm'
                 : 'text-charcoal-lighter hover:text-charcoal-light hover:bg-surface/60'
             )}
           >
-            <Moon size={11} />
+            <Moon size={isMobile ? 13 : 11} />
             저녁
           </button>
         </div>
       </div>
 
-      <div className="flex items-center gap-2 ml-4">
-        <div className="flex items-center gap-1.5">
+      <div className={cn('flex items-center', isMobile ? 'gap-1.5 ml-2' : 'gap-2 ml-4')}>
+        <div className={cn('items-center gap-1.5', isMobile ? 'hidden' : 'flex')}>
           <Users size={14} className="text-primary" />
           <span className="text-sm font-semibold text-charcoal">{occupiedSeats}</span>
           <span className="text-sm text-charcoal-lighter">/</span>
@@ -105,7 +124,7 @@ export default function MapTopBar({ showTimeTable, onToggleTimeTable }: MapTopBa
         </div>
 
         {!isEditMode && (
-          <div className="flex items-center gap-2 text-[12px] ml-1 mr-1">
+          <div className={cn('items-center gap-2 text-[12px] ml-1 mr-1', isMobile ? 'hidden' : 'flex')}>
             <span className="inline-flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-available" />
               {tables.filter((t) => t.status === 'available').length}
@@ -120,7 +139,8 @@ export default function MapTopBar({ showTimeTable, onToggleTimeTable }: MapTopBa
         <button
           onClick={toggleEditMode}
           className={cn(
-            'inline-flex items-center gap-1 text-[12px] font-semibold px-2.5 py-1 rounded-lg border transition-colors',
+            'inline-flex items-center gap-1 text-[12px] font-semibold rounded-lg border transition-colors min-h-[40px]',
+            isMobile ? 'px-3' : 'px-2.5 py-1',
             isEditMode
               ? 'bg-primary text-white border-primary'
               : 'bg-cream text-charcoal border-border hover:bg-border'
@@ -138,7 +158,8 @@ export default function MapTopBar({ showTimeTable, onToggleTimeTable }: MapTopBa
               setConfirmAction(null)
             }}
             className={cn(
-              'inline-flex items-center gap-1 text-[12px] font-semibold px-2.5 py-1 rounded-lg border transition-colors',
+              'inline-flex items-center gap-1 text-[12px] font-semibold rounded-lg border transition-colors min-h-[40px]',
+              isMobile ? 'px-3' : 'px-2.5 py-1',
               isSettingsOpen
                 ? 'bg-primary text-white border-primary'
                 : 'bg-cream text-charcoal border-border hover:bg-border'
@@ -204,14 +225,15 @@ export default function MapTopBar({ showTimeTable, onToggleTimeTable }: MapTopBa
           <button
             onClick={onToggleTimeTable}
             className={cn(
-              'inline-flex items-center justify-center w-7 h-7 rounded-lg transition-all duration-150',
+              'inline-flex items-center justify-center rounded-lg transition-all duration-150',
+              isMobile ? 'w-10 h-10' : 'w-7 h-7',
               showTimeTable
                 ? 'bg-primary/10 text-primary'
                 : 'text-charcoal-lighter hover:text-charcoal-light hover:bg-cream'
             )}
             title="타임테이블"
           >
-            <Clock size={12} />
+            <Clock size={isMobile ? 16 : 12} />
           </button>
         )}
       </div>

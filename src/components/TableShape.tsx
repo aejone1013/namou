@@ -68,6 +68,15 @@ export default function TableShape({ table }: TableShapeProps) {
   const linkedReservation = table.currentTeam?.reservationId
     ? reservations.find((r) => r.id === table.currentTeam!.reservationId)
     : null
+  const occupiedTimeLabel = table.currentTeam
+    ? linkedReservation
+      ? `${linkedReservation.startTime}~${linkedReservation.endTime}`
+      : table.currentTeam.startTime && table.currentTeam.endTime
+        ? `${table.currentTeam.startTime}~${table.currentTeam.endTime}`
+        : table.currentTeam.endTime
+          ? `${table.currentTeam.seatedAt}~${table.currentTeam.endTime}`
+          : `${table.currentTeam.seatedAt}~`
+    : null
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -106,19 +115,10 @@ export default function TableShape({ table }: TableShapeProps) {
         </div>
       )}
 
-      {/* End time from linked reservation */}
-      {table.currentTeam && linkedReservation && (
+      {/* Occupied time window */}
+      {table.currentTeam && occupiedTimeLabel && (
         <span className="text-[9px] text-occupied font-bold leading-none mt-0.5">
-          ~{linkedReservation.endTime}
-        </span>
-      )}
-
-      {/* Walk-in: show end time */}
-      {table.currentTeam && !linkedReservation && (
-        <span className="text-[9px] text-occupied font-bold leading-none mt-0.5">
-          {table.currentTeam.endTime
-            ? `~${table.currentTeam.endTime}`
-            : `${table.currentTeam.seatedAt}~`}
+          {occupiedTimeLabel}
         </span>
       )}
 

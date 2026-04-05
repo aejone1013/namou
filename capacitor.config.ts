@@ -12,7 +12,7 @@ const config: CapacitorConfig = {
   },
   plugins: {
     SplashScreen: {
-      launchAutoHide: true,
+      launchAutoHide: false,
       backgroundColor: '#F6F1E6',
       showSpinner: false,
     },

@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { Capacitor } from '@capacitor/core'
 import { List, Map, SlidersHorizontal, Clock } from 'lucide-react'
 import { cn } from './lib/cn'
 import { useMobileLayout } from './hooks/useMobileLayout'
+import { useViewportHeightVar } from './hooks/useViewportHeight'
 import Sidebar from './components/Sidebar'
 import FloorMap from './components/FloorMap'
 import ControlPanel from './components/ControlPanel'
@@ -15,6 +17,7 @@ type MobileTab = 'reservations' | 'map' | 'control' | 'timetable'
 
 export default function App() {
   void useReservationStore()
+  useViewportHeightVar()
   const isMobile = useMobileLayout()
   const [showTimeTable, setShowTimeTable] = useState(true)
   const [mobileTab, setMobileTab] = useState<MobileTab>('map')
@@ -23,9 +26,87 @@ export default function App() {
   // 모바일: 테이블 선택 시 자동으로 컨트롤 패널로 전환
   const effectiveMobileTab = isMobile && focusedTableId && mobileTab === 'map' ? 'control' : mobileTab
 
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return
+
+    let isDisposed = false
+    const hideSplash = () => {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          if (isDisposed) return
+          const plugins = (window as Window & {
+            Capacitor?: {
+              Plugins?: {
+                SplashScreen?: { hide?: () => Promise<void> }
+              }
+            }
+          }).Capacitor?.Plugins
+          void plugins?.SplashScreen?.hide?.()
+        })
+      })
+    }
+
+    if ('fonts' in document && document.fonts?.ready) {
+      void document.fonts.ready.then(hideSplash).catch(hideSplash)
+    } else {
+      hideSplash()
+    }
+
+    return () => {
+      isDisposed = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return
+
+    let removeListener: (() => void) | undefined
+
+    void import('@capacitor/app').then(({ App: CapApp }) => {
+      void CapApp.addListener('backButton', ({ canGoBack }) => {
+        const store = useReservationStore.getState()
+
+        if (store.isModalOpen) {
+          store.closeModal()
+          return
+        }
+
+        window.dispatchEvent(new CustomEvent('namou:request-close-transient-ui'))
+
+        if (store.focusedTableId) {
+          store.setFocusedTable(null)
+          return
+        }
+
+        if (isMobile && mobileTab !== 'map') {
+          setMobileTab('map')
+          return
+        }
+
+        if (canGoBack) {
+          window.history.back()
+          return
+        }
+
+        void CapApp.minimizeApp()
+      }).then((handle) => {
+        removeListener = () => {
+          void handle.remove()
+        }
+      })
+    })
+
+    return () => {
+      removeListener?.()
+    }
+  }, [isMobile, mobileTab])
+
   if (isMobile) {
     return (
-      <div className="flex flex-col h-screen w-screen bg-cream">
+      <div
+        className="flex flex-col w-screen bg-cream overflow-hidden"
+        style={{ height: 'calc(var(--app-height, 1vh) * 100)' }}
+      >
         {/* Top bar */}
         <MapTopBar
           showTimeTable={effectiveMobileTab === 'timetable'}
@@ -62,13 +143,13 @@ export default function App() {
               key={key}
               onClick={() => setMobileTab(key)}
               className={cn(
-                'flex flex-col items-center gap-0.5 py-2 px-4 text-[11px] font-semibold transition-colors',
+                'flex min-h-[56px] flex-1 flex-col items-center justify-center gap-0.5 py-2 px-2 text-[11px] font-semibold transition-colors',
                 effectiveMobileTab === key
                   ? 'text-primary'
                   : 'text-charcoal-lighter'
               )}
             >
-              <Icon size={20} />
+              <Icon size={21} />
               {label}
             </button>
           ))}

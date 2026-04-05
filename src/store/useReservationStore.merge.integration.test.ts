@@ -257,4 +257,16 @@ describe('useReservationStore integration (merge)', () => {
     expect(seated?.y).toBe(Math.min(t15!.y, t16!.y))
   })
 
+  test('T7/T8 manual merge works in the same right column', () => {
+    const store = useReservationStore.getState()
+    store.setActiveSession('lunch')
+    const A = addReservation({ name: 'TopRightColumn', partySize: 4, startTime: '12:00', endTime: '13:30', period: 'lunch' })
+
+    store.seatWithSelectedMerge(A.id, 't7', ['t8'])
+
+    const seated = useReservationStore.getState().getEffectiveTables().find((t) => t.currentTeam?.reservationId === A.id)
+    expect(seated).toBeTruthy()
+    expect(seated?.mergedFrom?.map((o) => o.id).sort()).toEqual(['t7', 't8'])
+  })
+
 })

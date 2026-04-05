@@ -184,9 +184,9 @@ export function compareTableLabel(a: string, b: string): number {
 }
 
 // 기본 테이블 레이아웃 (3열 구조)
-// 왼쪽열(T13-T16), 중앙열(T9-T12), 오른쪽열(T1-T7) + T8 독립
+// 왼쪽열(T13-T16), 중앙열(T9-T12), 오른쪽열(T1-T8)
 export const DEFAULT_TABLES: Omit<TableInfo, 'status' | 'currentTeam' | 'nextBooking'>[] = [
-  // 오른쪽 열: T1(하단)~T7(상단), 테이블 간 약간 간격
+  // 오른쪽 열: T1(하단)~T8(상단), 테이블 간 약간 간격
   { id: 't1',  label: 'T1',  shape: 'rectangle', seats: 2, x: 300, y: 556, width: 84, height: 72 },
   { id: 't2',  label: 'T2',  shape: 'rectangle', seats: 2, x: 300, y: 480, width: 84, height: 72 },
   { id: 't3',  label: 'T3',  shape: 'rectangle', seats: 2, x: 300, y: 404, width: 84, height: 72 },
@@ -194,8 +194,7 @@ export const DEFAULT_TABLES: Omit<TableInfo, 'status' | 'currentTeam' | 'nextBoo
   { id: 't5',  label: 'T5',  shape: 'rectangle', seats: 2, x: 300, y: 252, width: 84, height: 72 },
   { id: 't6',  label: 'T6',  shape: 'rectangle', seats: 2, x: 300, y: 176, width: 84, height: 72 },
   { id: 't7',  label: 'T7',  shape: 'rectangle', seats: 2, x: 300, y: 100, width: 84, height: 72 },
-  // T8: 독립 테이블 (같은 열 아님, 병합 불가)
-  { id: 't8',  label: 'T8',  shape: 'rectangle', seats: 2, x: 252, y: 24,  width: 84, height: 72 },
+  { id: 't8',  label: 'T8',  shape: 'rectangle', seats: 2, x: 300, y: 24,  width: 84, height: 72 },
   // 중앙 열: T9(하단)~T12(상단)
   { id: 't9',  label: 'T9',  shape: 'rectangle', seats: 2, x: 156, y: 328, width: 84, height: 72 },
   { id: 't10', label: 'T10', shape: 'rectangle', seats: 2, x: 156, y: 252, width: 84, height: 72 },
@@ -210,8 +209,7 @@ export const DEFAULT_TABLES: Omit<TableInfo, 'status' | 'currentTeam' | 'nextBoo
 
 // 열 단위 병합 그룹 (같은 그룹끼리만 병합 가능)
 export const MERGE_GROUPS: number[][] = [
-  [1, 2, 3, 4, 5, 6, 7],     // 오른쪽 열 (T8 제외)
-  [8],                       // 독립 테이블
+  [1, 2, 3, 4, 5, 6, 7, 8],  // 오른쪽 열
   [9, 10, 11, 12],             // 중앙 열
   [13, 14, 15, 16],            // 왼쪽 열 (1인석)
 ]
